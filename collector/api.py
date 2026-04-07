@@ -204,8 +204,12 @@ class APIHandler(BaseHTTPRequestHandler):
             (event_id, status),
         )
         conn.commit()
+        row = conn.execute(
+            "SELECT id FROM user_lists WHERE event_id = ?", (event_id,)
+        ).fetchone()
+        list_id = row["id"] if row else None
         conn.close()
-        self.send_json({"ok": True})
+        self.send_json({"ok": True, "list_id": list_id})
 
     def handle_list_update(self, body):
         list_id = body.get("list_id")

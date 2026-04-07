@@ -67,7 +67,7 @@ export async function getMyList(): Promise<ListItem[]> {
   return fetchJSON("/api/list");
 }
 
-export async function addToList(eventId: number, status = "interested") {
+export async function addToList(eventId: number, status = "interested"): Promise<{ ok: boolean; list_id: number | null }> {
   return fetchJSON("/api/list/add", {
     method: "POST",
     body: JSON.stringify({ event_id: eventId, status }),
