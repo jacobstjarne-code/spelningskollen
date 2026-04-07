@@ -316,7 +316,8 @@ def main():
 
     # Om databasen är tom (ny deploy), kör insamling direkt
     conn = get_connection()
-    count = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+    row = conn.execute("SELECT COUNT(*) as n FROM events").fetchone()
+    count = row["n"] if isinstance(row, dict) else row[0]
     conn.close()
     if count == 0:
         print("Tom databas — kör initial datainsamling...")
