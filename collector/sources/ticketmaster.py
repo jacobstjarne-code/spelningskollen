@@ -12,19 +12,16 @@ API_KEY = os.environ.get("TICKETMASTER_API_KEY", "")
 # Ticketmaster venue-ID → vår slug-mappning
 # Dessa hittas via API:ts venue-sök eller manuellt
 VENUE_MAP = {
-    # Stora scener Stockholm
-    "KovZpZAJale7A": "avicii-arena",
-    "KovZpZAJaleJA": "tele2-arena",
-    "KovZpZAJal67A": "strawberry-arena",
-    "KovZpZAJalEeA": "cirkus",
-    "KovZpZAJalJ7A": "annexet",
-    # Klubbar Stockholm
-    "KovZpZAJalv7A": "nalen",
-    "KovZpZAJal1eA": "berns",
-    "KovZpZAJaleaA": "munchenbryggeriet",
-    "KovZpZAJallJA": "sodra-teatern",
-    # Uppsala
-    "KovZpZAJal6JA": "ukk",
+    # Faktiska Ticketmaster venue-IDn (från event-data)
+    "Z598xZq2Za7e1": "strawberry-arena",
+    "Z198xZq2ZAv1": "cirkus",
+    "Z598xZq2ZkA1k": "berns",
+    "Z698xZq2Za7wK": "avicii-arena",        # Hovet / Avicii Arena
+    "Z698xZq2ZaeDT": "skansen-solliden",     # Sollidenscenen, Skansen
+    "Z698xZq2Zaeno": "slaktkyrkan",          # Fryshuset-området
+    "Z698xZq2ZaA6l": "debaser-strand",       # Debaser Nova
+    "Z698xZq2ZaANu": "munchenbryggeriet",    # Förbindelsehallen
+    "Z698xZq2ZaAI2": "grona-lund",           # Portlands - Frihamnen
 }
 
 
