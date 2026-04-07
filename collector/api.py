@@ -357,16 +357,20 @@ def main():
     init_db()
     seed_venues()
 
-    # Om databasen är tom (ny deploy), kör full insamling
-    conn = get_connection()
-    row = conn.execute("SELECT COUNT(*) as n FROM events").fetchone()
-    count = row["n"] if isinstance(row, dict) else row[0]
-    conn.close()
-    if count == 0:
-        print("Tom databas — kör initial datainsamling...")
-        _run_full_collect()
+    # Kör insamling i bakgrunden (blockar inte serverstarten)
+    def _initial_collect():
+        conn = get_connection()
+        row = conn.execute("SELECT COUNT(*) as n FROM events").fetchone()
+        count = row["n"] if isinstance(row, dict) else row[0]
+        conn.close()
+        if count == 0:
+            print("[Init] Tom databas — kör initial datainsamling...")
+            _run_full_collect()
+        else:
+            print(f"[Init] {count} events redan i databasen")
+    threading.Thread(target=_initial_collect, daemon=True).start()
 
-    # Starta bakgrundsinsamling
+    # Starta schemalagd insamling
     _schedule_collect()
 
     port = int(os.environ.get("PORT", 3001))
