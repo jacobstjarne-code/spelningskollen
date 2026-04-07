@@ -16,14 +16,10 @@ services:
       - key: COLLECT_KEY
         generateValue: true
       - key: DB_PATH
-        value: /data/spelningskollen.db
+        value: /tmp/spelningskollen.db
       - key: PORT
         value: 10000
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: NODE_VERSION
         value: 20.11.0
-    disk:
-      name: spelningskollen-data
-      mountPath: /data
-      sizeGB: 1

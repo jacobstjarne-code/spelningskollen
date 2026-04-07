@@ -309,13 +309,30 @@ class APIHandler(BaseHTTPRequestHandler):
 
 
 def main():
+    from .db.database import DB_PATH
+
     init_db()
     seed_venues()
+
+    # Om databasen är tom (ny deploy), kör insamling direkt
+    conn = get_connection()
+    count = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+    conn.close()
+    if count == 0:
+        print("Tom databas — kör initial datainsamling...")
+        from .sources import ticketmaster
+        try:
+            n = ticketmaster.collect()
+            print(f"  {n} events insamlade")
+        except Exception as e:
+            print(f"  Fel vid insamling: {e}")
+
     port = int(os.environ.get("PORT", 3001))
     server = HTTPServer(("0.0.0.0", port), APIHandler)
     print(f"Spelningskollen kör på http://0.0.0.0:{port}")
+    print(f"  DB: {DB_PATH}")
     if STATIC_DIR.is_dir():
-        print(f"  Serverar statiska filer från {STATIC_DIR}")
+        print(f"  Statiska filer: {STATIC_DIR}")
     else:
         print(f"  OBS: {STATIC_DIR} saknas — kör 'cd web && npm run build' först")
     server.serve_forever()
