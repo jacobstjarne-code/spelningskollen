@@ -1,10 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "export",
   images: {
-    remotePatterns: [
-      { protocol: "https", hostname: "s1.ticketm.net" },
-      { protocol: "https", hostname: "images.sk-static.com" },
-    ],
+    unoptimized: true,
   },
 };
 

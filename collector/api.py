@@ -1,15 +1,35 @@
-"""Enkelt JSON API för konsertkalendern.
+"""Spelningskollen — API + statisk filserver.
+
+Serverar:
+  /api/*  → JSON API (events, venues, user lists)
+  /*      → Statiska filer från Next.js export (web/out/)
 
 Körs som: python -m collector.api
-Serverar events från SQLite som JSON.
-Används av Next.js frontend under utveckling.
 """
+from __future__ import annotations
 
 import json
+import os
+import mimetypes
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
-from datetime import date, datetime
+from pathlib import Path
 from .db.database import get_connection, init_db, seed_venues
+
+STATIC_DIR = Path(__file__).parent.parent / "web" / "out"
+
+MIME_TYPES = {
+    ".html": "text/html",
+    ".css": "text/css",
+    ".js": "application/javascript",
+    ".json": "application/json",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".woff2": "font/woff2",
+    ".woff": "font/woff",
+}
 
 
 class APIHandler(BaseHTTPRequestHandler):
@@ -19,18 +39,22 @@ class APIHandler(BaseHTTPRequestHandler):
         path = parsed.path
         params = parse_qs(parsed.query)
 
-        routes = {
+        # API-routes
+        api_routes = {
             "/api/events": self.handle_events,
             "/api/venues": self.handle_venues,
             "/api/list": self.handle_list,
             "/api/stats": self.handle_stats,
+            "/api/collect": self.handle_collect,
         }
 
-        handler = routes.get(path)
+        handler = api_routes.get(path)
         if handler:
             handler(params)
-        else:
-            self.send_json({"error": "Not found"}, 404)
+            return
+
+        # Statiska filer
+        self.serve_static(path)
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -38,16 +62,60 @@ class APIHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(content_length)) if content_length else {}
 
-        if path == "/api/list/add":
-            self.handle_list_add(body)
-        elif path == "/api/list/update":
-            self.handle_list_update(body)
-        elif path == "/api/list/remove":
-            self.handle_list_remove(body)
-        elif path == "/api/artists/follow":
-            self.handle_artist_follow(body)
+        post_routes = {
+            "/api/list/add": self.handle_list_add,
+            "/api/list/update": self.handle_list_update,
+            "/api/list/remove": self.handle_list_remove,
+            "/api/artists/follow": self.handle_artist_follow,
+        }
+
+        handler = post_routes.get(path)
+        if handler:
+            handler(body)
         else:
             self.send_json({"error": "Not found"}, 404)
+
+    def serve_static(self, path: str):
+        """Servera statisk fil från web/out/."""
+        if path == "/":
+            path = "/index.html"
+
+        # Prova exakt sökväg, sedan med .html (för Next.js clean URLs)
+        candidates = [
+            STATIC_DIR / path.lstrip("/"),
+            STATIC_DIR / (path.lstrip("/") + ".html"),
+            STATIC_DIR / path.lstrip("/") / "index.html",
+        ]
+
+        for filepath in candidates:
+            if filepath.is_file():
+                ext = filepath.suffix
+                content_type = MIME_TYPES.get(ext, mimetypes.guess_type(str(filepath))[0] or "application/octet-stream")
+                try:
+                    data = filepath.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", content_type)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Cache-Control", "public, max-age=3600" if ext != ".html" else "no-cache")
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+                except IOError:
+                    break
+
+        # 404 — försök visa index.html (SPA fallback)
+        index = STATIC_DIR / "index.html"
+        if index.is_file():
+            data = index.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        else:
+            self.send_json({"error": "Not found"}, 404)
+
+    # --- API handlers ---
 
     def handle_events(self, params):
         conn = get_connection()
@@ -62,9 +130,8 @@ class APIHandler(BaseHTTPRequestHandler):
             LEFT JOIN user_lists ul ON ul.event_id = e.id
             WHERE e.date >= date('now')
         """
-        query_params = []
+        query_params: list = []
 
-        # Filtrering
         if "city" in params:
             query += " AND v.city = ?"
             query_params.append(params["city"][0])
@@ -101,7 +168,7 @@ class APIHandler(BaseHTTPRequestHandler):
         conn = get_connection()
         city = params.get("city", [None])[0]
         query = "SELECT * FROM venues"
-        query_params = []
+        query_params: list = []
         if city:
             query += " WHERE city = ?"
             query_params.append(city)
@@ -114,7 +181,7 @@ class APIHandler(BaseHTTPRequestHandler):
         conn = get_connection()
         rows = conn.execute("""
             SELECT ul.*, e.artist, e.title, e.date, e.time, e.ticket_url,
-                   e.ticket_status, e.image_url,
+                   e.ticket_status, e.image_url, e.on_sale_date,
                    v.name as venue_name, v.city
             FROM user_lists ul
             JOIN events e ON ul.event_id = e.id
@@ -144,7 +211,7 @@ class APIHandler(BaseHTTPRequestHandler):
         list_id = body.get("list_id")
         conn = get_connection()
         updates = []
-        params = []
+        params: list = []
         for field in ["status", "ticket_count", "notes", "remind_before_days"]:
             if field in body:
                 updates.append(f"{field} = ?")
@@ -179,6 +246,24 @@ class APIHandler(BaseHTTPRequestHandler):
         conn.close()
         self.send_json({"ok": True})
 
+    def handle_collect(self, params):
+        """Trigga datainsamling. Skyddad med enkel nyckel."""
+        key = params.get("key", [None])[0]
+        expected = os.environ.get("COLLECT_KEY", "")
+        if expected and key != expected:
+            self.send_json({"error": "Unauthorized"}, 401)
+            return
+        import threading
+        from .sources import ticketmaster
+        def _run():
+            try:
+                count = ticketmaster.collect()
+                print(f"[Collect] Klart: {count} events")
+            except Exception as e:
+                print(f"[Collect] Fel: {e}")
+        threading.Thread(target=_run, daemon=True).start()
+        self.send_json({"ok": True, "message": "Insamling startad i bakgrunden"})
+
     def handle_stats(self, params):
         conn = get_connection()
         total = conn.execute("SELECT COUNT(*) as n FROM events WHERE date >= date('now')").fetchone()["n"]
@@ -202,16 +287,22 @@ class APIHandler(BaseHTTPRequestHandler):
         })
 
     def send_json(self, data, status=200):
+        body = json.dumps(data, ensure_ascii=False, default=str).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
-        self.wfile.write(json.dumps(data, ensure_ascii=False, default=str).encode())
+        self.wfile.write(body)
 
     def do_OPTIONS(self):
-        self.send_json({})
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
     def log_message(self, format, *args):
         print(f"[API] {args[0]}")
@@ -220,9 +311,13 @@ class APIHandler(BaseHTTPRequestHandler):
 def main():
     init_db()
     seed_venues()
-    port = 3001
-    server = HTTPServer(("localhost", port), APIHandler)
-    print(f"Konsertkalender API kör på http://localhost:{port}")
+    port = int(os.environ.get("PORT", 3001))
+    server = HTTPServer(("0.0.0.0", port), APIHandler)
+    print(f"Spelningskollen kör på http://0.0.0.0:{port}")
+    if STATIC_DIR.is_dir():
+        print(f"  Serverar statiska filer från {STATIC_DIR}")
+    else:
+        print(f"  OBS: {STATIC_DIR} saknas — kör 'cd web && npm run build' först")
     server.serve_forever()
 
 

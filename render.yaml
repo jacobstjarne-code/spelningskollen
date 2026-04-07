@@ -1,0 +1,29 @@
+# Render Blueprint — Spelningskollen
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: spelningskollen
+    runtime: python
+    plan: free
+    buildCommand: bash build.sh
+    startCommand: python -m collector.api
+    envVars:
+      - key: TICKETMASTER_API_KEY
+        sync: false
+      - key: SONGKICK_API_KEY
+        sync: false
+      - key: COLLECT_KEY
+        generateValue: true
+      - key: DB_PATH
+        value: /data/spelningskollen.db
+      - key: PORT
+        value: 10000
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: NODE_VERSION
+        value: 20.11.0
+    disk:
+      name: spelningskollen-data
+      mountPath: /data
+      sizeGB: 1
