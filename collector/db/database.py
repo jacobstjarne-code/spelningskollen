@@ -1,31 +1,189 @@
-"""Databashantering för konsertkalendern."""
+"""Spelningskollen — Databaslager.
 
+Turso (libSQL via HTTP) i produktion, SQLite lokalt.
+Samma mönster som jobbagenten.
+"""
 from __future__ import annotations
 
-import sqlite3
 import os
+import sqlite3
+import mimetypes
+from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime, date
 from typing import Optional
 
-DB_PATH = os.environ.get("DB_PATH", str(Path(__file__).parent.parent.parent / "konsertkalender.db"))
+import requests as _http
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Konfiguration
+# ──────────────────────────────────────────────────────────────────────────────
+
+_TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
+_TURSO_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "")
+
+_DATA_DIR = os.getenv("DATA_DIR", str(Path(__file__).parent.parent.parent))
+DB_PATH = os.path.join(_DATA_DIR, "spelningskollen.db")
 
 
-def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+# ──────────────────────────────────────────────────────────────────────────────
+# Turso HTTP-wrapper (från jobbagenten — lättviktig, sqlite3-kompatibelt)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class _TursoCursor:
+    """Minimal cursor som returnerar dicts."""
+    def __init__(self, cols, rows, last_insert_rowid=None):
+        self._rows = rows
+        self._cols = cols
+        self.lastrowid = last_insert_rowid
+        self.rowcount = len(rows)
+        self.description = [(c, None, None, None, None, None, None) for c in cols]
+
+    def fetchall(self):
+        return [dict(zip(self._cols, r)) for r in self._rows]
+
+    def fetchone(self):
+        if self._rows:
+            return dict(zip(self._cols, self._rows[0]))
+        return None
+
+    def __iter__(self):
+        return iter(self.fetchall())
+
+
+class _TursoConnection:
+    """HTTP-baserad anslutning till Turso. Efterliknar sqlite3.Connection."""
+    def __init__(self, url, token):
+        url = url.replace("libsql://", "https://").replace("wss://", "https://")
+        self._url = url.rstrip("/")
+        self._headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+
+    def execute(self, sql, params=None):
+        args = []
+        if params:
+            for p in params:
+                if p is None:
+                    args.append({"type": "null"})
+                elif isinstance(p, bool):
+                    args.append({"type": "integer", "value": str(int(p))})
+                elif isinstance(p, int):
+                    args.append({"type": "integer", "value": str(p)})
+                elif isinstance(p, float):
+                    args.append({"type": "float", "value": p})
+                else:
+                    args.append({"type": "text", "value": str(p)})
+
+        body = {
+            "requests": [
+                {"type": "execute", "stmt": {"sql": sql, "args": args}},
+                {"type": "close"},
+            ]
+        }
+
+        resp = _http.post(f"{self._url}/v2/pipeline", headers=self._headers, json=body, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+
+        result = data.get("results", [{}])[0]
+        if result.get("type") == "error":
+            err = result.get("error", {})
+            raise sqlite3.OperationalError(err.get("message", "Turso error"))
+
+        response = result.get("response", {}).get("result", {})
+        cols = [c["name"] for c in response.get("cols", [])]
+        raw_rows = response.get("rows", [])
+        rows = []
+        for raw_row in raw_rows:
+            row = []
+            for cell in raw_row:
+                if cell.get("type") == "null":
+                    row.append(None)
+                elif cell.get("type") == "integer":
+                    row.append(int(cell["value"]))
+                elif cell.get("type") == "float":
+                    row.append(float(cell["value"]))
+                else:
+                    row.append(cell.get("value"))
+            rows.append(row)
+
+        last_id = response.get("last_insert_rowid")
+        return _TursoCursor(cols, rows, last_id)
+
+    def executescript(self, sql):
+        """Kör flera SQL-satser (används av init_db)."""
+        statements = [s.strip() for s in sql.split(";") if s.strip()]
+        for stmt in statements:
+            self.execute(stmt)
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Anslutning
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _dict_factory(cursor, row):
+    return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
+
+
+@contextmanager
+def get_db():
+    """Context manager för databasanslutning."""
+    if _TURSO_URL and _TURSO_TOKEN:
+        conn = _TursoConnection(_TURSO_URL, _TURSO_TOKEN)
+    else:
+        conn = sqlite3.connect(DB_PATH, timeout=30)
+        conn.row_factory = _dict_factory
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_connection():
+    """Legacy-funktion — returnerar en rå connection (använd get_db() istället)."""
+    if _TURSO_URL and _TURSO_TOKEN:
+        return _TursoConnection(_TURSO_URL, _TURSO_TOKEN)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Init & seed
+# ──────────────────────────────────────────────────────────────────────────────
+
 def init_db():
     """Skapa tabeller om de inte finns."""
     schema_path = Path(__file__).parent / "schema.sql"
-    conn = get_connection()
-    with open(schema_path) as f:
-        conn.executescript(f.read())
-    conn.close()
+    if _TURSO_URL and _TURSO_TOKEN:
+        conn = _TursoConnection(_TURSO_URL, _TURSO_TOKEN)
+        with open(schema_path) as f:
+            conn.executescript(f.read())
+        conn.close()
+    else:
+        conn = sqlite3.connect(DB_PATH, timeout=30)
+        with open(schema_path) as f:
+            conn.executescript(f.read())
+        conn.close()
 
 
 def seed_venues():
@@ -72,6 +230,10 @@ def seed_venues():
     conn.commit()
     conn.close()
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Event-operationer
+# ──────────────────────────────────────────────────────────────────────────────
 
 def upsert_event(
     source: str,

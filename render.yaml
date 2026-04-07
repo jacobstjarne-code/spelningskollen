@@ -13,10 +13,12 @@ services:
         sync: false
       - key: SONGKICK_API_KEY
         sync: false
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
       - key: COLLECT_KEY
         generateValue: true
-      - key: DB_PATH
-        value: /tmp/spelningskollen.db
       - key: PORT
         value: 10000
       - key: PYTHON_VERSION
