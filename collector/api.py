@@ -11,12 +11,58 @@ from __future__ import annotations
 import json
 import os
 import mimetypes
+import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
 from .db.database import get_connection, init_db, seed_venues
 
 STATIC_DIR = Path(__file__).parent.parent / "web" / "out"
+
+# Insamlingsintervall (sekunder). Default: var 6:e timme.
+COLLECT_INTERVAL = int(os.environ.get("COLLECT_INTERVAL", 6 * 3600))
+
+
+def _run_full_collect():
+    """Kör alla datakällor."""
+    from .sources import ticketmaster
+    from .sources.scraper_debaser import DebaserScraper
+    from .sources.scraper_katalin import KatalinScraper
+    from .sources.scraper_parksnackan import ParksnackanScraper
+    from .sources.scraper_luger import LugerScraper
+
+    total = 0
+    for label, fn in [
+        ("Ticketmaster", ticketmaster.collect),
+        ("Debaser", lambda: DebaserScraper().collect()),
+        ("Katalin", lambda: KatalinScraper().collect()),
+        ("Parksnäckan", lambda: ParksnackanScraper().collect()),
+        ("Luger", lambda: LugerScraper().collect()),
+    ]:
+        try:
+            n = fn()
+            print(f"[Collect] {label}: {n} events")
+            total += n
+        except Exception as e:
+            print(f"[Collect] {label}: FEL — {e}")
+    print(f"[Collect] Klart: {total} events totalt")
+    return total
+
+
+def _schedule_collect():
+    """Kör insamling i bakgrunden med fast intervall."""
+    def loop():
+        import time
+        while True:
+            time.sleep(COLLECT_INTERVAL)
+            print(f"[Cron] Startar schemalagd insamling...")
+            try:
+                _run_full_collect()
+            except Exception as e:
+                print(f"[Cron] Fel: {e}")
+    t = threading.Thread(target=loop, daemon=True)
+    t.start()
+    print(f"  Schemalagd insamling var {COLLECT_INTERVAL // 3600}h")
 
 MIME_TYPES = {
     ".html": "text/html",
@@ -258,14 +304,7 @@ class APIHandler(BaseHTTPRequestHandler):
             self.send_json({"error": "Unauthorized"}, 401)
             return
         import threading
-        from .sources import ticketmaster
-        def _run():
-            try:
-                count = ticketmaster.collect()
-                print(f"[Collect] Klart: {count} events")
-            except Exception as e:
-                print(f"[Collect] Fel: {e}")
-        threading.Thread(target=_run, daemon=True).start()
+        threading.Thread(target=_run_full_collect, daemon=True).start()
         self.send_json({"ok": True, "message": "Insamling startad i bakgrunden"})
 
     def handle_stats(self, params):
@@ -318,19 +357,17 @@ def main():
     init_db()
     seed_venues()
 
-    # Om databasen är tom (ny deploy), kör insamling direkt
+    # Om databasen är tom (ny deploy), kör full insamling
     conn = get_connection()
     row = conn.execute("SELECT COUNT(*) as n FROM events").fetchone()
     count = row["n"] if isinstance(row, dict) else row[0]
     conn.close()
     if count == 0:
         print("Tom databas — kör initial datainsamling...")
-        from .sources import ticketmaster
-        try:
-            n = ticketmaster.collect()
-            print(f"  {n} events insamlade")
-        except Exception as e:
-            print(f"  Fel vid insamling: {e}")
+        _run_full_collect()
+
+    # Starta bakgrundsinsamling
+    _schedule_collect()
 
     port = int(os.environ.get("PORT", 3001))
     server = HTTPServer(("0.0.0.0", port), APIHandler)
