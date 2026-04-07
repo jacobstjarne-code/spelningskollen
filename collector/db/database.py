@@ -19,8 +19,8 @@ import requests as _http
 # Konfiguration
 # ──────────────────────────────────────────────────────────────────────────────
 
-_TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
-_TURSO_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "")
+_TURSO_URL = os.getenv("TURSO_DATABASE_URL", "").strip()
+_TURSO_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "").strip()
 
 _DATA_DIR = os.getenv("DATA_DIR", str(Path(__file__).parent.parent.parent))
 DB_PATH = os.path.join(_DATA_DIR, "spelningskollen.db")
