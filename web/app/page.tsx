@@ -113,7 +113,7 @@ export default function Home() {
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {dateEvents.map((ev, i) => (
                   <div key={ev.id} className={`animate-in stagger-${Math.min(i + 1, 5)}`}>
-                    <EventCard event={ev} onSaved={loadEvents} />
+                    <EventCard event={ev} />
                   </div>
                 ))}
               </div>

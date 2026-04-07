@@ -28,7 +28,10 @@ class VenueScraper(ABC):
         try:
             resp = self.session.get(url, timeout=15)
             resp.raise_for_status()
-            return BeautifulSoup(resp.text, "lxml")
+            try:
+                return BeautifulSoup(resp.text, "lxml")
+            except Exception:
+                return BeautifulSoup(resp.text, "html.parser")
         except requests.RequestException as e:
             print(f"  Fel vid hämtning av {url}: {e}")
             return None
