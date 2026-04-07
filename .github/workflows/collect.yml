@@ -1,0 +1,34 @@
+name: Samla in konserter
+
+on:
+  schedule:
+    - cron: '0 6,18 * * *'   # Kör 06:00 och 18:00 UTC (08:00/20:00 sv tid)
+  workflow_dispatch:           # Manuell körning
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Installera dependencies
+        run: pip install -r collector/requirements.txt
+
+      - name: Initiera databas
+        run: python -m collector.main --init --source all
+        env:
+          TICKETMASTER_API_KEY: ${{ secrets.TICKETMASTER_API_KEY }}
+          SONGKICK_API_KEY: ${{ secrets.SONGKICK_API_KEY }}
+          DB_PATH: ./konsertkalender.db
+
+      - name: Ladda upp databas som artefakt
+        uses: actions/upload-artifact@v4
+        with:
+          name: konsertkalender-db
+          path: ./konsertkalender.db
+          retention-days: 7

@@ -1,0 +1,308 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   SPELNINGSKOLLEN — Design System
+   Mörk klubb-känsla, neonrosa accent, tight layout
+   Inspirerad av Bandy Manager men med live-vibe
+   ============================================ */
+
+:root {
+  /* --- Bakgrunder --- */
+  --bg: #0C0B0F;                          /* Djupt mörkt, nästan svart med lila ton */
+  --bg-surface: #16141C;                  /* Kort-bakgrund */
+  --bg-elevated: #1E1B26;                 /* Hovrad/upphöjd yta */
+  --bg-stage: #221E2D;                    /* "Scen"-bakgrund, lite ljusare */
+  --bg-spotlight: radial-gradient(ellipse at 50% 0%, rgba(212,60,126,0.08) 0%, transparent 70%);
+
+  /* --- Accent (neonrosa/magenta) --- */
+  --accent: #D43C7E;
+  --accent-bright: #F04E96;
+  --accent-dim: #A82D63;
+  --accent-glow: rgba(212,60,126,0.35);
+
+  /* --- Sekundär accent (varm amber för kontrast) --- */
+  --warm: #D4A04A;
+  --warm-dim: #B8872E;
+
+  /* --- Text --- */
+  --text-primary: #F0ECF4;
+  --text-secondary: #9B95A8;
+  --text-muted: #6B6578;
+  --text-accent: #F04E96;
+
+  /* --- Semantiska färger --- */
+  --success: #4ADE80;
+  --success-dim: rgba(74,222,128,0.12);
+  --warning: #FBBF24;
+  --warning-dim: rgba(251,191,36,0.12);
+  --danger: #F87171;
+  --danger-dim: rgba(248,113,113,0.12);
+  --info: #7EB3D4;
+  --info-dim: rgba(126,179,212,0.12);
+
+  /* --- Borders --- */
+  --border: rgba(255,255,255,0.06);
+  --border-accent: rgba(212,60,126,0.25);
+  --border-hover: rgba(255,255,255,0.12);
+
+  /* --- Typografi --- */
+  --font-display: 'Georgia', 'Times New Roman', serif;
+  --font-body: system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* --- Spacing --- */
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-xs: 4px;
+  --bottom-nav-height: 56px;
+}
+
+/* --- Base --- */
+* { box-sizing: border-box; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* --- Cards --- */
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  transition: background 150ms, border-color 150ms;
+}
+.card:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-hover);
+}
+
+.card-glow {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  box-shadow: 0 0 20px rgba(212,60,126,0.06), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+.card-stage {
+  background: var(--bg-stage);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+/* --- Spotlight-effekt (top of page) --- */
+.spotlight {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 400px;
+  background: var(--bg-spotlight);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* --- Tags --- */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 99px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+.tag-accent {
+  background: rgba(212,60,126,0.12);
+  color: var(--accent-bright);
+}
+.tag-warm {
+  background: rgba(212,160,74,0.12);
+  color: var(--warm);
+}
+.tag-ghost {
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.tag-success {
+  background: var(--success-dim);
+  color: var(--success);
+}
+.tag-danger {
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+.tag-warning {
+  background: var(--warning-dim);
+  color: var(--warning);
+}
+
+/* --- Buttons --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 150ms;
+}
+.btn-accent {
+  background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+  color: #fff;
+  box-shadow: 0 3px 12px var(--accent-glow), 0 1px 2px rgba(0,0,0,0.2);
+}
+.btn-accent:hover {
+  background: linear-gradient(135deg, var(--accent-bright), var(--accent));
+  box-shadow: 0 4px 20px var(--accent-glow), 0 1px 3px rgba(0,0,0,0.3);
+}
+.btn-ghost {
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+/* --- Section labels (BM-style) --- */
+.section-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* --- Date headers (sticky) --- */
+.date-header {
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--text-secondary);
+  padding: 6px 0;
+  position: sticky;
+  top: 52px;
+  background: var(--bg);
+  z-index: 10;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+/* --- Status dots --- */
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.status-on-sale { background: var(--success); box-shadow: 0 0 6px rgba(74,222,128,0.4); }
+.status-sold-out { background: var(--danger); opacity: 0.6; }
+.status-presale { background: var(--warning); box-shadow: 0 0 6px rgba(251,191,36,0.4); }
+
+/* --- Animations --- */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 12px var(--accent-glow); }
+  50% { box-shadow: 0 0 24px var(--accent-glow), 0 0 48px rgba(212,60,126,0.12); }
+}
+@keyframes breathe {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.animate-in {
+  animation: fadeInUp 200ms ease-out forwards;
+}
+.stagger-1 { animation-delay: 0ms; }
+.stagger-2 { animation-delay: 50ms; }
+.stagger-3 { animation-delay: 100ms; }
+.stagger-4 { animation-delay: 150ms; }
+.stagger-5 { animation-delay: 200ms; }
+
+/* --- Neon underline accent --- */
+.neon-underline {
+  position: relative;
+}
+.neon-underline::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 40px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* --- Venue type indicator bar --- */
+.venue-bar {
+  width: 3px;
+  border-radius: 2px;
+  align-self: stretch;
+}
+.venue-bar-arena { background: var(--accent); }
+.venue-bar-club { background: var(--warm); }
+.venue-bar-outdoor { background: var(--success); }
+.venue-bar-festival { background: var(--info); }
+
+/* --- Scrollbar --- */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* --- Nav active indicator --- */
+.nav-active {
+  color: var(--accent-bright) !important;
+  position: relative;
+}
+.nav-active::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+/* --- Ticket status pills --- */
+.pill-on-sale {
+  background: rgba(74,222,128,0.12);
+  color: var(--success);
+  border: 1px solid rgba(74,222,128,0.2);
+}
+.pill-sold-out {
+  background: rgba(248,113,113,0.08);
+  color: rgba(248,113,113,0.5);
+  border: 1px solid rgba(248,113,113,0.1);
+  text-decoration: line-through;
+}
+.pill-presale {
+  background: rgba(251,191,36,0.12);
+  color: var(--warning);
+  border: 1px solid rgba(251,191,36,0.2);
+}
