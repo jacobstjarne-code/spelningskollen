@@ -325,7 +325,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 FROM event_changes
                 WHERE field = 'price_min'
                 GROUP BY event_id
-                HAVING changed_at = MAX(changed_at)
+                HAVING detected_at = MAX(detected_at)
             ) pc ON pc.event_id = e.id
             {score_join}
             WHERE e.date >= date('now')
