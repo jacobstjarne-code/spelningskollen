@@ -6,3 +6,6 @@ node_modules/
 .next/
 .venv/
 venv/
+*.db-shm
+*.db-wal
+web/out/
