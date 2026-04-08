@@ -26,6 +26,7 @@ COLLECT_INTERVAL = int(os.environ.get("COLLECT_INTERVAL", 6 * 3600))
 def _run_full_collect():
     """Kör alla datakällor."""
     from .sources import ticketmaster
+    from .sources.scraper_tickster import TicksterScraper
     from .sources.scraper_debaser import DebaserScraper
     from .sources.scraper_katalin import KatalinScraper
     from .sources.scraper_parksnackan import ParksnackanScraper
@@ -34,6 +35,7 @@ def _run_full_collect():
     total = 0
     for label, fn in [
         ("Ticketmaster", ticketmaster.collect),
+        ("Tickster", lambda: TicksterScraper().collect()),
         ("Debaser", lambda: DebaserScraper().collect()),
         ("Katalin", lambda: KatalinScraper().collect()),
         ("Parksnäckan", lambda: ParksnackanScraper().collect()),

@@ -21,10 +21,8 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 from collector.db.database import init_db, seed_venues
-from collector.sources import ticketmaster, songkick
-from collector.sources.scraper_nalen import NalenScraper
-from collector.sources.scraper_slaktkyrkan import SlaktkyrkanScraper
-from collector.sources.scraper_sodrateatern import SodraTeaternScraper
+from collector.sources import ticketmaster
+from collector.sources.scraper_tickster import TicksterScraper
 from collector.sources.scraper_debaser import DebaserScraper
 from collector.sources.scraper_katalin import KatalinScraper
 from collector.sources.scraper_parksnackan import ParksnackanScraper
@@ -32,9 +30,7 @@ from collector.sources.scraper_luger import LugerScraper
 
 
 ALL_SCRAPERS = [
-    NalenScraper,
-    SlaktkyrkanScraper,
-    SodraTeaternScraper,
+    TicksterScraper,      # Nalen, Södra Teatern, Fållan, Orionteatern, Flustret, Berns, m.fl.
     DebaserScraper,
     KatalinScraper,
     ParksnackanScraper,
@@ -59,8 +55,8 @@ def run_scrapers() -> int:
 
 def main():
     parser = argparse.ArgumentParser(description="Konsertkalender — datainsamling")
-    parser.add_argument("--source", choices=["tm", "sk", "sc", "all"], default="all",
-                        help="Datakälla: tm=Ticketmaster, sk=Songkick, sc=Scrapers, all=Alla")
+    parser.add_argument("--source", choices=["tm", "sc", "all"], default="all",
+                        help="Datakälla: tm=Ticketmaster, sc=Scrapers, all=Alla")
     parser.add_argument("--init", action="store_true", help="Initiera databas och venues")
     args = parser.parse_args()
 
@@ -76,10 +72,6 @@ def main():
 
     if args.source in ("tm", "all"):
         total += ticketmaster.collect()
-        print()
-
-    if args.source in ("sk", "all"):
-        total += songkick.collect()
         print()
 
     if args.source in ("sc", "all"):
