@@ -68,6 +68,14 @@ CREATE TABLE IF NOT EXISTS reminders (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS venue_aliases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    venue_id INTEGER NOT NULL REFERENCES venues(id),
+    alias TEXT NOT NULL UNIQUE
+);
+
+CREATE INDEX IF NOT EXISTS idx_venue_aliases_alias ON venue_aliases(alias);
+
 CREATE TABLE IF NOT EXISTS event_matches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     canonical_event_id INTEGER NOT NULL REFERENCES events(id),
@@ -93,6 +101,18 @@ CREATE TABLE IF NOT EXISTS event_changes (
     new_value TEXT,
     detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS collect_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    events_found INTEGER DEFAULT 0,
+    events_new INTEGER DEFAULT 0,
+    errors TEXT,
+    duration_ms INTEGER,
+    collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_collect_log_source ON collect_log(source, collected_at);
 
 -- Index för vanliga queries
 CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);

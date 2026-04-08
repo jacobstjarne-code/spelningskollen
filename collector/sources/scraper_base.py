@@ -5,6 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 from abc import ABC, abstractmethod
 from datetime import date
+from ..text_utils import clean_text, clean_event_title
 
 
 class VenueScraper(ABC):
@@ -35,6 +36,14 @@ class VenueScraper(ABC):
         except requests.RequestException as e:
             print(f"  Fel vid hämtning av {url}: {e}")
             return None
+
+    def clean(self, text: str | None) -> str | None:
+        """Rensa text — HTML-entities, unicode, whitespace."""
+        return clean_text(text)
+
+    def clean_title(self, text: str | None) -> str | None:
+        """Rensa titel och ta bort datum-mönster."""
+        return clean_event_title(text)
 
     @abstractmethod
     def scrape(self) -> list[dict]:

@@ -176,6 +176,8 @@ _MIGRATIONS = [
     "ALTER TABLE events ADD COLUMN canonical_id INTEGER REFERENCES events(id)",
     "ALTER TABLE events ADD COLUMN status TEXT DEFAULT 'active'",
     "ALTER TABLE events ADD COLUMN local_image_path TEXT",
+    "ALTER TABLE user_lists ADD COLUMN share_token TEXT",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_lists_share_token ON user_lists(share_token)",
     "CREATE INDEX IF NOT EXISTS idx_events_canonical ON events(canonical_id)",
 ]
 
@@ -200,6 +202,12 @@ def init_db():
             pass  # Kolumn/tabell finns redan
 
     conn.close()
+
+
+def seed_venue_aliases():
+    """Seeda venue_aliases-tabellen. Kallas automatiskt av seed_venues()."""
+    from ..venue_resolver import seed_venue_aliases as _seed
+    return _seed()
 
 
 def seed_venues():
@@ -245,6 +253,8 @@ def seed_venues():
         )
     conn.commit()
     conn.close()
+    # Seeda alias-tabellen (idempotent)
+    seed_venue_aliases()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -355,6 +365,57 @@ def migrate_genres():
     conn.commit()
     conn.close()
     print(f"migrate_genres: {updated} events uppdaterade")
+    return updated
+
+
+def migrate_fix_encoding():
+    """Engångsmigrering: rensa HTML-entities och unicode-fel i befintlig data."""
+    from ..text_utils import clean_text
+    conn = get_connection()
+    events = conn.execute(
+        "SELECT id, artist, title, description FROM events"
+    ).fetchall()
+    updated = 0
+    for e in events:
+        updates: dict = {}
+        for field in ["artist", "title", "description"]:
+            original = e[field]
+            if original:
+                cleaned = clean_text(original)
+                if cleaned != original:
+                    updates[field] = cleaned
+        if updates:
+            set_clause = ", ".join(f"{k} = ?" for k in updates)
+            conn.execute(
+                f"UPDATE events SET {set_clause} WHERE id = ?",
+                list(updates.values()) + [e["id"]]
+            )
+            updated += 1
+    conn.commit()
+    conn.close()
+    print(f"migrate_fix_encoding: {updated} events uppdaterade")
+    return updated
+
+
+def migrate_strip_dates_from_titles():
+    """Engångsmigrering: ta bort datum-mönster ur event-titlar."""
+    from ..text_utils import strip_date_from_title
+    conn = get_connection()
+    events = conn.execute(
+        "SELECT id, title FROM events WHERE title IS NOT NULL"
+    ).fetchall()
+    updated = 0
+    for e in events:
+        stripped = strip_date_from_title(e["title"])
+        if stripped != e["title"]:
+            conn.execute(
+                "UPDATE events SET title = ? WHERE id = ?",
+                (stripped or None, e["id"])
+            )
+            updated += 1
+    conn.commit()
+    conn.close()
+    print(f"migrate_strip_dates_from_titles: {updated} titlar uppdaterade")
     return updated
 
 

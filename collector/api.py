@@ -12,10 +12,27 @@ import json
 import os
 import mimetypes
 import threading
+import time
+from collections import defaultdict
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
 from .db.database import get_connection, init_db, seed_venues
+
+# Rate limiting
+_REQUEST_LOG: dict = defaultdict(list)
+_RATE_LIMIT = int(os.environ.get("RATE_LIMIT", 60))  # requests/minut/IP
+_RATE_LOCK = threading.Lock()
+
+
+def _is_rate_limited(ip: str) -> bool:
+    now = time.time()
+    with _RATE_LOCK:
+        _REQUEST_LOG[ip] = [t for t in _REQUEST_LOG[ip] if now - t < 60]
+        if len(_REQUEST_LOG[ip]) >= _RATE_LIMIT:
+            return True
+        _REQUEST_LOG[ip].append(now)
+    return False
 
 STATIC_DIR = Path(__file__).parent.parent / "web" / "out"
 
@@ -23,30 +40,64 @@ STATIC_DIR = Path(__file__).parent.parent / "web" / "out"
 COLLECT_INTERVAL = int(os.environ.get("COLLECT_INTERVAL", 6 * 3600))
 
 
+def _log_collect(source: str, events_found: int, errors: str | None, duration_ms: int):
+    """Logga en insamlingskörning till collect_log."""
+    try:
+        conn = get_connection()
+        conn.execute(
+            """INSERT INTO collect_log (source, events_found, errors, duration_ms)
+               VALUES (?, ?, ?, ?)""",
+            (source, events_found, errors, duration_ms)
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
 def _run_full_collect():
     """Kör alla datakällor. Scraper-listan importeras från main.py för att undvika avvikelser."""
+    import time
     from .sources import ticketmaster
+    from .sources import bandsintown, resident_advisor
     from .main import ALL_SCRAPERS
     from .matching import post_collect_match
     from .db.database import get_connection
 
     total = 0
-    try:
-        n = ticketmaster.collect()
-        print(f"[Collect] Ticketmaster: {n} events")
-        total += n
-    except Exception as e:
-        print(f"[Collect] Ticketmaster: FEL — {e}")
 
-    for scraper_cls in ALL_SCRAPERS:
-        scraper = scraper_cls()
-        label = scraper_cls.__name__.replace("Scraper", "")
+    # API-källor
+    for label, fn in [
+        ("ticketmaster", ticketmaster.collect),
+        ("bandsintown", bandsintown.collect),
+        ("resident_advisor", resident_advisor.collect),
+    ]:
+        t0 = int(time.time() * 1000)
+        err = None
+        n = 0
         try:
-            n = scraper.collect()
+            n = fn()
             print(f"[Collect] {label}: {n} events")
             total += n
         except Exception as e:
+            err = str(e)
             print(f"[Collect] {label}: FEL — {e}")
+        _log_collect(label, n, err, int(time.time() * 1000) - t0)
+
+    for scraper_cls in ALL_SCRAPERS:
+        scraper = scraper_cls()
+        label = scraper_cls.__name__.replace("Scraper", "").lower()
+        t0 = int(time.time() * 1000)
+        err = None
+        n = 0
+        try:
+            n = scraper.collect()
+            print(f"[Collect] {scraper_cls.__name__}: {n} events")
+            total += n
+        except Exception as e:
+            err = str(e)
+            print(f"[Collect] {scraper_cls.__name__}: FEL — {e}")
+        _log_collect(label, n, err, int(time.time() * 1000) - t0)
 
     # Ladda ner bilder för nya events
     try:
@@ -72,6 +123,15 @@ def _run_full_collect():
             print(f"[Matching] {merged} auto-mergade, {cands} kandidater sparade")
     except Exception as e:
         print(f"[Matching] FEL — {e}")
+
+    # Artist-bevakning
+    try:
+        from .artist_monitor import check_new_events_for_followed_artists
+        n = check_new_events_for_followed_artists()
+        if n:
+            print(f"[Artists] {n} nya reminders för bevakade artister")
+    except Exception as e:
+        print(f"[Artists] FEL — {e}")
 
     print(f"[Collect] Klart: {total} events totalt")
     return total
@@ -133,6 +193,13 @@ class APIHandler(BaseHTTPRequestHandler):
         path = parsed.path
         params = parse_qs(parsed.query)
 
+        # Rate limiting (bara på API-routes)
+        if path.startswith("/api/"):
+            ip = self.client_address[0]
+            if _is_rate_limited(ip):
+                self.send_json({"error": "Too Many Requests"}, 429)
+                return
+
         # API-routes
         api_routes = {
             "/api/events": self.handle_events,
@@ -141,6 +208,8 @@ class APIHandler(BaseHTTPRequestHandler):
             "/api/stats": self.handle_stats,
             "/api/collect": self.handle_collect,
             "/api/admin/match-candidates": self.handle_match_candidates,
+            "/api/admin/collect-log": self.handle_collect_log,
+            "/api/list/share": self.handle_list_share_get,
         }
 
         handler = api_routes.get(path)
@@ -163,6 +232,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "/api/list/remove": self.handle_list_remove,
             "/api/artists/follow": self.handle_artist_follow,
             "/api/admin/match-verify": self.handle_match_verify,
+            "/api/list/share/generate": self.handle_list_share_generate,
             "/api/push/subscribe": self.handle_push_subscribe,
             "/api/push/unsubscribe": self.handle_push_unsubscribe,
         }
@@ -261,7 +331,7 @@ class APIHandler(BaseHTTPRequestHandler):
 
         rows = conn.execute(query, query_params).fetchall()
         conn.close()
-        self.send_json([dict(r) for r in rows])
+        self.send_json([dict(r) for r in rows], cache_seconds=300)
 
     def handle_venues(self, params):
         conn = get_connection()
@@ -384,6 +454,67 @@ class APIHandler(BaseHTTPRequestHandler):
             "top_venues": [dict(r) for r in by_venue],
         })
 
+    def handle_list_share_get(self, params):
+        """Hämta delad lista via share_token."""
+        token = params.get("token", [None])[0]
+        if not token:
+            self.send_json({"error": "token krävs"}, 400)
+            return
+        conn = get_connection()
+        rows = conn.execute("""
+            SELECT ul.status, e.artist, e.title, e.date, e.time,
+                   e.ticket_url, e.ticket_status, e.image_url,
+                   v.name as venue_name, v.city
+            FROM user_lists ul
+            JOIN events e ON ul.event_id = e.id
+            LEFT JOIN venues v ON e.venue_id = v.id
+            WHERE ul.share_token = ? AND e.date >= date('now')
+            ORDER BY e.date
+        """, (token,)).fetchall()
+        conn.close()
+        self.send_json([dict(r) for r in rows])
+
+    def handle_list_share_generate(self, body):
+        """Generera share_token för user_list-rad."""
+        list_id = body.get("list_id")
+        if not list_id:
+            self.send_json({"error": "list_id krävs"}, 400)
+            return
+        import secrets
+        token = secrets.token_urlsafe(12)
+        conn = get_connection()
+        conn.execute(
+            "UPDATE user_lists SET share_token = ? WHERE id = ?",
+            (token, list_id)
+        )
+        conn.commit()
+        conn.close()
+        self.send_json({"ok": True, "token": token})
+
+    def handle_collect_log(self, params):
+        """Senaste insamlingskörning per källa."""
+        key = params.get("key", [None])[0]
+        expected = os.environ.get("COLLECT_KEY", "")
+        if expected and key != expected:
+            self.send_json({"error": "Unauthorized"}, 401)
+            return
+        conn = get_connection()
+        rows = conn.execute("""
+            SELECT source,
+                   MAX(collected_at) as last_run,
+                   SUM(events_found) as total_events,
+                   MAX(events_found) as last_count,
+                   SUM(CASE WHEN errors IS NOT NULL THEN 1 ELSE 0 END) as error_count,
+                   MAX(errors) as last_error,
+                   AVG(duration_ms) as avg_duration_ms
+            FROM collect_log
+            WHERE collected_at >= datetime('now', '-7 days')
+            GROUP BY source
+            ORDER BY last_run DESC
+        """).fetchall()
+        conn.close()
+        self.send_json([dict(r) for r in rows])
+
     def handle_push_subscribe(self, body):
         endpoint = body.get("endpoint")
         keys = body.get("keys", {})
@@ -485,7 +616,7 @@ class APIHandler(BaseHTTPRequestHandler):
         conn.close()
         self.send_json({"ok": True, "action": action})
 
-    def send_json(self, data, status=200):
+    def send_json(self, data, status=200, cache_seconds=0):
         body = json.dumps(data, ensure_ascii=False, default=str).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -493,6 +624,10 @@ class APIHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        if cache_seconds > 0:
+            self.send_header("Cache-Control", f"public, max-age={cache_seconds}")
+        else:
+            self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
 

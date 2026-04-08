@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 from collector.db.database import init_db, seed_venues
-from collector.sources import ticketmaster
+from collector.sources import ticketmaster, bandsintown, resident_advisor
 from collector.sources.scraper_tickster import TicksterScraper
 from collector.sources.scraper_fasching import FaschingScraper
 from collector.sources.scraper_munchenbryggeriet import MunchenbryggerietScraper
@@ -78,6 +78,16 @@ def main():
 
     if args.source in ("tm", "all"):
         total += ticketmaster.collect()
+        print()
+
+    if args.source in ("sc", "all"):
+        for label, fn in [("Bandsintown", bandsintown.collect), ("Resident Advisor", resident_advisor.collect)]:
+            try:
+                n = fn()
+                print(f"{label}: {n} events")
+                total += n
+            except Exception as e:
+                print(f"{label}: FEL — {e}")
         print()
 
     if args.source in ("sc", "all"):

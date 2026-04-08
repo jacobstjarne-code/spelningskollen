@@ -43,12 +43,20 @@ def find_matches(event_id: int) -> list[dict]:
     """
     Givet ett event-ID, hitta möjliga dubbletter från andra källor.
 
+    Söker:
+    a) Samma venue_id + datum ±1 dag
+    b) Samma stad + samma datum + ingen venue_id på endera
+
     Returnerar lista med:
       { canonical_id, candidate_id, confidence, match_method }
     """
     conn = get_connection()
     event = conn.execute(
-        "SELECT id, artist, date, venue_id, source FROM events WHERE id = ?",
+        """SELECT e.id, e.artist, e.date, e.venue_id, e.source,
+                  v.city
+           FROM events e
+           LEFT JOIN venues v ON e.venue_id = v.id
+           WHERE e.id = ?""",
         (event_id,)
     ).fetchone()
     conn.close()
@@ -56,24 +64,53 @@ def find_matches(event_id: int) -> list[dict]:
     if not event:
         return []
 
-    # Hämta kandidater: samma venue och datum, annan källa
-    conn = get_connection()
-    candidates = conn.execute(
-        """SELECT id, artist, source FROM events
-           WHERE venue_id = ? AND date = ? AND id != ? AND canonical_id IS NULL""",
-        (event["venue_id"], event["date"], event_id)
-    ).fetchall()
-    conn.close()
+    candidates: list = []
+
+    # Strategi a: samma venue + datum ±1 dag
+    if event["venue_id"]:
+        conn = get_connection()
+        rows = conn.execute(
+            """SELECT e.id, e.artist, e.date, e.source FROM events e
+               WHERE e.venue_id = ?
+                 AND e.date BETWEEN date(?, '-1 day') AND date(?, '+1 day')
+                 AND e.id != ?
+                 AND e.canonical_id IS NULL""",
+            (event["venue_id"], event["date"], event["date"], event_id)
+        ).fetchall()
+        conn.close()
+        candidates.extend([(r, False) for r in rows])  # False = exakt datum
+
+    # Strategi b: samma stad, exakt datum, en av dem saknar venue
+    if event["city"]:
+        conn = get_connection()
+        rows = conn.execute(
+            """SELECT e.id, e.artist, e.date, e.source FROM events e
+               LEFT JOIN venues v ON e.venue_id = v.id
+               WHERE (e.venue_id IS NULL OR ? IS NULL)
+                 AND v.city = ?
+                 AND e.date = ?
+                 AND e.id != ?
+                 AND e.canonical_id IS NULL""",
+            (event["venue_id"], event["city"], event["date"], event_id)
+        ).fetchall()
+        conn.close()
+        candidates.extend([(r, False) for r in rows])
 
     if not candidates:
         return []
 
     norm_a = normalize_artist(event["artist"])
+    seen_pairs: set = set()
     matches = []
 
-    for cand in candidates:
+    for cand, date_differs in candidates:
         if cand["source"] == event["source"]:
-            continue  # Samma källa, inga dubbletter
+            continue
+
+        pair_key = tuple(sorted([event_id, cand["id"]]))
+        if pair_key in seen_pairs:
+            continue
+        seen_pairs.add(pair_key)
 
         norm_b = normalize_artist(cand["artist"])
 
@@ -89,7 +126,11 @@ def find_matches(event_id: int) -> list[dict]:
         else:
             continue
 
-        # Canonical = det äldre/mer kompletta eventet
+        # Reducera confidence om datum skiljer 1 dag
+        if cand["date"] != event["date"]:
+            confidence = max(0.0, confidence - 0.05)
+            method = method + "_date_offset"
+
         canonical_id = min(event_id, cand["id"])
         candidate_id = max(event_id, cand["id"])
 
