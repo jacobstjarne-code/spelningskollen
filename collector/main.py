@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 from collector.db.database import init_db, seed_venues
-from collector.sources import ticketmaster, bandsintown, resident_advisor
+from collector.sources import ticketmaster, bandsintown, resident_advisor, allthingslive
 from collector.sources.scraper_tickster import TicksterScraper
 from collector.sources.scraper_fasching import FaschingScraper
 from collector.sources.scraper_munchenbryggeriet import MunchenbryggerietScraper
@@ -81,7 +81,7 @@ def main():
         print()
 
     if args.source in ("sc", "all"):
-        for label, fn in [("Bandsintown", bandsintown.collect), ("Resident Advisor", resident_advisor.collect)]:
+        for label, fn in [("Bandsintown", bandsintown.collect), ("Resident Advisor", resident_advisor.collect), ("All Things Live", allthingslive.collect)]:
             try:
                 n = fn()
                 print(f"{label}: {n} events")

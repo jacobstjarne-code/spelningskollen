@@ -12,7 +12,7 @@ import json
 from .db.database import get_connection
 
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
-VAPID_EMAIL = os.environ.get("VAPID_EMAIL", "mailto:admin@spelningskollen.se")
+VAPID_EMAIL = os.environ.get("VAPID_SUBJECT", os.environ.get("VAPID_EMAIL", "mailto:admin@spelningskollen.se"))
 
 try:
     from pywebpush import webpush, WebPushException

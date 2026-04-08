@@ -23,6 +23,15 @@ export default function ListaPage() {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [pushState, setPushState] = useState<"idle" | "requesting" | "active" | "denied">("idle");
+
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "granted") {
+      setPushState("active");
+    } else if ("Notification" in window && Notification.permission === "denied") {
+      setPushState("denied");
+    }
+  }, []);
 
   const loadList = async () => {
     try {
@@ -60,6 +69,37 @@ export default function ListaPage() {
     }
   };
 
+  const handlePushSubscribe = async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    setPushState("requesting");
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setPushState("denied");
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: vapidKey,
+      });
+      const subJson = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: subJson.endpoint,
+          p256dh: subJson.keys?.p256dh,
+          auth: subJson.keys?.auth,
+        }),
+      });
+      setPushState("active");
+    } catch {
+      setPushState("idle");
+    }
+  };
+
   const handleCopy = () => {
     if (!shareUrl) return;
     navigator.clipboard.writeText(shareUrl).then(() => {
@@ -85,23 +125,46 @@ export default function ListaPage() {
             <span style={{ color: "var(--text-secondary)" }}>✓ {goingCount} ska gå</span>
             <span style={{ color: "var(--text-muted)" }}>♡ {items.length} totalt</span>
           </div>
-          {items.length > 0 && (
-            <button
-              onClick={handleShare}
-              disabled={sharing}
-              style={{
-                background: "none",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-xs)",
-                padding: "4px 10px",
-                fontSize: 10,
-                color: "var(--text-secondary)",
-                cursor: "pointer",
-              }}
-            >
-              {sharing ? "..." : "Dela lista"}
-            </button>
-          )}
+          <div style={{ display: "flex", gap: 6 }}>
+            {pushState !== "denied" && pushState !== "active" && (
+              <button
+                onClick={handlePushSubscribe}
+                disabled={pushState === "requesting"}
+                title="Få notiser om spelningar och biljettsläpp"
+                style={{
+                  background: "none",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-xs)",
+                  padding: "4px 10px",
+                  fontSize: 10,
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                }}
+              >
+                {pushState === "requesting" ? "..." : "🔔 Notiser"}
+              </button>
+            )}
+            {pushState === "active" && (
+              <span style={{ fontSize: 10, color: "var(--accent-bright)", padding: "4px 0" }}>🔔 På</span>
+            )}
+            {items.length > 0 && (
+              <button
+                onClick={handleShare}
+                disabled={sharing}
+                style={{
+                  background: "none",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-xs)",
+                  padding: "4px 10px",
+                  fontSize: 10,
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                }}
+              >
+                {sharing ? "..." : "Dela lista"}
+              </button>
+            )}
+          </div>
         </div>
 
         {shareUrl && (

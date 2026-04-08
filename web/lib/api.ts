@@ -14,6 +14,7 @@ export interface Event {
   ticket_status: string;
   price_min: number | null;
   price_max: number | null;
+  price_prev: number | null;
   on_sale_date: string | null;
   source: string;
   venue_name: string | null;

@@ -292,10 +292,18 @@ class APIHandler(BaseHTTPRequestHandler):
                    e.image_url, e.ticket_url, e.ticket_status, e.price_min, e.price_max,
                    e.on_sale_date, e.source,
                    v.name as venue_name, v.city, v.slug as venue_slug, v.venue_type,
-                   ul.status as list_status, ul.id as list_id
+                   ul.status as list_status, ul.id as list_id,
+                   pc.price_prev
             FROM events e
             LEFT JOIN venues v ON e.venue_id = v.id
             LEFT JOIN user_lists ul ON ul.event_id = e.id
+            LEFT JOIN (
+                SELECT event_id, CAST(old_value AS REAL) as price_prev
+                FROM event_changes
+                WHERE field = 'price_min'
+                GROUP BY event_id
+                HAVING changed_at = MAX(changed_at)
+            ) pc ON pc.event_id = e.id
             WHERE e.date >= date('now')
               AND e.canonical_id IS NULL
         """

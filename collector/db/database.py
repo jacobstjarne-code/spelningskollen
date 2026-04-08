@@ -281,6 +281,8 @@ def upsert_event(
     on_sale_date: str | None = None,
 ) -> int:
     """Lägg in eller uppdatera ett event. Returnerar event-ID."""
+    from ..change_detector import detect_changes, record_changes
+
     # Normalisera genre: råvärde → subgenre, normaliserat → genre
     normalized = normalize_genre(genre)
     raw_subgenre = subgenre or genre  # Behåll råvärdet som subgenre
@@ -292,6 +294,12 @@ def upsert_event(
         row = conn.execute("SELECT id FROM venues WHERE slug = ?", (venue_slug,)).fetchone()
         if row:
             venue_id = row["id"]
+
+    # Hämta befintligt event för change detection
+    existing = conn.execute(
+        "SELECT id, date, time, venue_id, ticket_status, price_min, price_max FROM events WHERE source = ? AND external_id = ?",
+        (source, external_id),
+    ).fetchone()
 
     conn.execute(
         """INSERT INTO events (source, external_id, venue_id, artist, title, date, time,
@@ -323,6 +331,21 @@ def upsert_event(
     ).fetchone()
     event_id = row["id"]
     conn.close()
+
+    # Detektera och spara förändringar (bara vid uppdatering, ej ny insert)
+    if existing:
+        incoming = {
+            "date": str(event_date),
+            "time": event_time,
+            "venue_id": venue_id,
+            "ticket_status": ticket_status,
+            "price_min": price_min,
+            "price_max": price_max,
+        }
+        changes = detect_changes(dict(existing), incoming)
+        if changes:
+            record_changes(event_id, changes)
+
     return event_id
 
 

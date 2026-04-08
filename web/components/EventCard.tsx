@@ -123,6 +123,18 @@ export default function EventCard({ event }: { event: Event }) {
           {price && (
             <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{price}</span>
           )}
+          {event.price_prev != null && event.price_min != null && event.price_prev !== event.price_min && (
+            <span style={{
+              fontSize: 9,
+              fontWeight: 600,
+              color: event.price_min > event.price_prev ? "#ef4444" : "#34d399",
+              background: event.price_min > event.price_prev ? "rgba(239,68,68,0.1)" : "rgba(52,211,153,0.1)",
+              padding: "1px 5px",
+              borderRadius: 3,
+            }}>
+              {event.price_min > event.price_prev ? "↑" : "↓"} {Math.abs(event.price_min - event.price_prev)} kr
+            </span>
+          )}
         </div>
       </div>
 
