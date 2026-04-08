@@ -30,6 +30,7 @@ from collector.sources.scraper_debaser import DebaserScraper
 from collector.sources.scraper_katalin import KatalinScraper
 from collector.sources.scraper_parksnackan import ParksnackanScraper
 from collector.sources.scraper_luger import LugerScraper
+from collector.sources.scraper_kaliber import KaliberScraper
 
 
 ALL_SCRAPERS = [
@@ -41,6 +42,7 @@ ALL_SCRAPERS = [
     KatalinScraper,
     ParksnackanScraper,
     LugerScraper,
+    KaliberScraper,
 ]
 
 

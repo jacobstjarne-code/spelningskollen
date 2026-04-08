@@ -242,6 +242,8 @@ def seed_venues():
         ("Botaniska", "Uppsala", "botaniska", "outdoor", None, 5000),
         ("IFU Arena", "Uppsala", "ifu-arena", "arena", None, 8500),
         ("Uppsala Konsert & Kongress", "Uppsala", "ukk", "arena", "https://www.ukk.se", 1200),
+        ("Blackbird", "Uppsala", "blackbird", "club", "https://www.kaliberlive.com", 200),
+        ("Gasklockorna", "Uppsala", "gasklockorna", "outdoor", "https://www.gasklockorna.se", 1500),
     ]
 
     conn = get_connection()
