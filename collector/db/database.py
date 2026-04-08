@@ -14,6 +14,7 @@ from datetime import datetime, date
 from typing import Optional
 
 import requests as _http
+from ..genre import normalize_genre
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Konfiguration
@@ -171,19 +172,33 @@ def get_connection():
 # Init & seed
 # ──────────────────────────────────────────────────────────────────────────────
 
+_MIGRATIONS = [
+    "ALTER TABLE events ADD COLUMN canonical_id INTEGER REFERENCES events(id)",
+    "ALTER TABLE events ADD COLUMN status TEXT DEFAULT 'active'",
+    "CREATE INDEX IF NOT EXISTS idx_events_canonical ON events(canonical_id)",
+]
+
+
 def init_db():
-    """Skapa tabeller om de inte finns."""
+    """Skapa tabeller och kör migreringar."""
     schema_path = Path(__file__).parent / "schema.sql"
     if _TURSO_URL and _TURSO_TOKEN:
         conn = _TursoConnection(_TURSO_URL, _TURSO_TOKEN)
-        with open(schema_path) as f:
-            conn.executescript(f.read())
-        conn.close()
     else:
         conn = sqlite3.connect(DB_PATH, timeout=30)
-        with open(schema_path) as f:
-            conn.executescript(f.read())
-        conn.close()
+        conn.row_factory = _dict_factory
+
+    with open(schema_path) as f:
+        conn.executescript(f.read())
+
+    # Idempotenta migreringar
+    for migration in _MIGRATIONS:
+        try:
+            conn.execute(migration)
+        except Exception:
+            pass  # Kolumn/tabell finns redan
+
+    conn.close()
 
 
 def seed_venues():
@@ -255,6 +270,10 @@ def upsert_event(
     on_sale_date: str | None = None,
 ) -> int:
     """Lägg in eller uppdatera ett event. Returnerar event-ID."""
+    # Normalisera genre: råvärde → subgenre, normaliserat → genre
+    normalized = normalize_genre(genre)
+    raw_subgenre = subgenre or genre  # Behåll råvärdet som subgenre
+
     conn = get_connection()
 
     venue_id = None
@@ -274,6 +293,7 @@ def upsert_event(
                date = excluded.date,
                time = excluded.time,
                genre = excluded.genre,
+               subgenre = excluded.subgenre,
                ticket_url = excluded.ticket_url,
                ticket_status = excluded.ticket_status,
                price_min = excluded.price_min,
@@ -281,7 +301,7 @@ def upsert_event(
                image_url = excluded.image_url,
                last_updated = CURRENT_TIMESTAMP""",
         (source, external_id, venue_id, artist, title, str(event_date), event_time,
-         doors_open, genre, subgenre, description, image_url, ticket_url,
+         doors_open, normalized, raw_subgenre, description, image_url, ticket_url,
          ticket_status, price_min, price_max, on_sale_date),
     )
     conn.commit()
@@ -315,6 +335,26 @@ def get_upcoming_events(city: str | None = None, days_ahead: int = 90) -> list[d
     rows = conn.execute(query, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def migrate_genres():
+    """Engångsmigrering: normalisera genre-fältet för befintliga events."""
+    conn = get_connection()
+    events = conn.execute("SELECT id, genre FROM events WHERE genre IS NOT NULL").fetchall()
+    updated = 0
+    for e in events:
+        raw = e["genre"]
+        normalized = normalize_genre(raw)
+        if normalized != raw:  # Undvik onödiga skrivningar
+            conn.execute(
+                "UPDATE events SET subgenre = genre, genre = ? WHERE id = ?",
+                (normalized, e["id"])
+            )
+            updated += 1
+    conn.commit()
+    conn.close()
+    print(f"migrate_genres: {updated} events uppdaterade")
+    return updated
 
 
 if __name__ == "__main__":

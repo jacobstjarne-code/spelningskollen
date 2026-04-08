@@ -68,9 +68,28 @@ CREATE TABLE IF NOT EXISTS reminders (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS event_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    canonical_event_id INTEGER NOT NULL REFERENCES events(id),
+    matched_event_id INTEGER NOT NULL REFERENCES events(id),
+    confidence REAL NOT NULL,
+    match_method TEXT NOT NULL,              -- 'exact', 'fuzzy_artist', 'manual'
+    verified BOOLEAN DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(canonical_event_id, matched_event_id)
+);
+
+CREATE TABLE IF NOT EXISTS genre_map (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    raw_genre TEXT NOT NULL UNIQUE,
+    normalized TEXT NOT NULL
+);
+
 -- Index för vanliga queries
 CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
 CREATE INDEX IF NOT EXISTS idx_events_artist ON events(artist);
 CREATE INDEX IF NOT EXISTS idx_events_venue ON events(venue_id);
 CREATE INDEX IF NOT EXISTS idx_events_source ON events(source, external_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_pending ON reminders(sent, remind_at);
+CREATE INDEX IF NOT EXISTS idx_event_matches_canonical ON event_matches(canonical_event_id);
+CREATE INDEX IF NOT EXISTS idx_event_matches_matched ON event_matches(matched_event_id);

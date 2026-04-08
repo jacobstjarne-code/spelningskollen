@@ -24,35 +24,46 @@ COLLECT_INTERVAL = int(os.environ.get("COLLECT_INTERVAL", 6 * 3600))
 
 
 def _run_full_collect():
-    """Kör alla datakällor."""
+    """Kör alla datakällor. Scraper-listan importeras från main.py för att undvika avvikelser."""
     from .sources import ticketmaster
-    from .sources.scraper_tickster import TicksterScraper
-    from .sources.scraper_fasching import FaschingScraper
-    from .sources.scraper_munchenbryggeriet import MunchenbryggerietScraper
-    from .sources.scraper_stockholmlive import StockholmLiveScraper
-    from .sources.scraper_debaser import DebaserScraper
-    from .sources.scraper_katalin import KatalinScraper
-    from .sources.scraper_parksnackan import ParksnackanScraper
-    from .sources.scraper_luger import LugerScraper
+    from .main import ALL_SCRAPERS
+    from .matching import post_collect_match
+    from .db.database import get_connection
 
     total = 0
-    for label, fn in [
-        ("Ticketmaster", ticketmaster.collect),
-        ("Tickster", lambda: TicksterScraper().collect()),
-        ("Fasching", lambda: FaschingScraper().collect()),
-        ("Münchenbryggeriet", lambda: MunchenbryggerietScraper().collect()),
-        ("Stockholm Live", lambda: StockholmLiveScraper().collect()),
-        ("Debaser", lambda: DebaserScraper().collect()),
-        ("Katalin", lambda: KatalinScraper().collect()),
-        ("Parksnäckan", lambda: ParksnackanScraper().collect()),
-        ("Luger", lambda: LugerScraper().collect()),
-    ]:
+    try:
+        n = ticketmaster.collect()
+        print(f"[Collect] Ticketmaster: {n} events")
+        total += n
+    except Exception as e:
+        print(f"[Collect] Ticketmaster: FEL — {e}")
+
+    for scraper_cls in ALL_SCRAPERS:
+        scraper = scraper_cls()
+        label = scraper_cls.__name__.replace("Scraper", "")
         try:
-            n = fn()
+            n = scraper.collect()
             print(f"[Collect] {label}: {n} events")
             total += n
         except Exception as e:
             print(f"[Collect] {label}: FEL — {e}")
+
+    # Kör matchning på alla events som samlats in senaste timmen
+    try:
+        conn = get_connection()
+        recent = conn.execute(
+            """SELECT id FROM events
+               WHERE last_updated >= datetime('now', '-1 hour')
+               AND canonical_id IS NULL"""
+        ).fetchall()
+        conn.close()
+        recent_ids = [r["id"] for r in recent]
+        if recent_ids:
+            merged, cands = post_collect_match(recent_ids)
+            print(f"[Matching] {merged} auto-mergade, {cands} kandidater sparade")
+    except Exception as e:
+        print(f"[Matching] FEL — {e}")
+
     print(f"[Collect] Klart: {total} events totalt")
     return total
 
@@ -183,6 +194,7 @@ class APIHandler(BaseHTTPRequestHandler):
             LEFT JOIN venues v ON e.venue_id = v.id
             LEFT JOIN user_lists ul ON ul.event_id = e.id
             WHERE e.date >= date('now')
+              AND e.canonical_id IS NULL
         """
         query_params: list = []
 
@@ -265,12 +277,14 @@ class APIHandler(BaseHTTPRequestHandler):
         conn.close()
         self.send_json({"ok": True, "list_id": list_id})
 
+    ALLOWED_LIST_FIELDS = {'status', 'ticket_count', 'notes', 'remind_before_days'}
+
     def handle_list_update(self, body):
         list_id = body.get("list_id")
         conn = get_connection()
         updates = []
         params: list = []
-        for field in ["status", "ticket_count", "notes", "remind_before_days"]:
+        for field in self.ALLOWED_LIST_FIELDS:
             if field in body:
                 updates.append(f"{field} = ?")
                 params.append(body[field])
