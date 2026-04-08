@@ -23,6 +23,9 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 from collector.db.database import init_db, seed_venues
 from collector.sources import ticketmaster
 from collector.sources.scraper_tickster import TicksterScraper
+from collector.sources.scraper_fasching import FaschingScraper
+from collector.sources.scraper_munchenbryggeriet import MunchenbryggerietScraper
+from collector.sources.scraper_stockholmlive import StockholmLiveScraper
 from collector.sources.scraper_debaser import DebaserScraper
 from collector.sources.scraper_katalin import KatalinScraper
 from collector.sources.scraper_parksnackan import ParksnackanScraper
@@ -30,7 +33,10 @@ from collector.sources.scraper_luger import LugerScraper
 
 
 ALL_SCRAPERS = [
-    TicksterScraper,      # Nalen, Södra Teatern, Fållan, Orionteatern, Flustret, Berns, m.fl.
+    TicksterScraper,              # Nalen, Södra Teatern, Fållan, Orionteatern, Flustret, Berns, m.fl.
+    FaschingScraper,              # Fasching (WordPress REST API)
+    MunchenbryggerietScraper,     # Münchenbryggeriet
+    StockholmLiveScraper,         # Avicii Arena, Annexet, Strawberry Arena
     DebaserScraper,
     KatalinScraper,
     ParksnackanScraper,

@@ -27,6 +27,9 @@ def _run_full_collect():
     """Kör alla datakällor."""
     from .sources import ticketmaster
     from .sources.scraper_tickster import TicksterScraper
+    from .sources.scraper_fasching import FaschingScraper
+    from .sources.scraper_munchenbryggeriet import MunchenbryggerietScraper
+    from .sources.scraper_stockholmlive import StockholmLiveScraper
     from .sources.scraper_debaser import DebaserScraper
     from .sources.scraper_katalin import KatalinScraper
     from .sources.scraper_parksnackan import ParksnackanScraper
@@ -36,6 +39,9 @@ def _run_full_collect():
     for label, fn in [
         ("Ticketmaster", ticketmaster.collect),
         ("Tickster", lambda: TicksterScraper().collect()),
+        ("Fasching", lambda: FaschingScraper().collect()),
+        ("Münchenbryggeriet", lambda: MunchenbryggerietScraper().collect()),
+        ("Stockholm Live", lambda: StockholmLiveScraper().collect()),
         ("Debaser", lambda: DebaserScraper().collect()),
         ("Katalin", lambda: KatalinScraper().collect()),
         ("Parksnäckan", lambda: ParksnackanScraper().collect()),

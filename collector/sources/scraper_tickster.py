@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import hashlib
 from datetime import date
+from urllib.parse import quote
 from .scraper_base import VenueScraper
 from ..db.database import upsert_event
 
@@ -23,7 +24,7 @@ TICKSTER_VENUES = {
     "fållan": "fallan",
     "gröna-lund": "grona-lund",
     "flustret": "flustret",
-    "kulturhuset-stadsteatern": "cirkus",  # Placeholder — lägg till venue om du vill
+    "cirkus": "cirkus",
 }
 
 BASE_URL = "https://www.tickster.com"
@@ -48,7 +49,8 @@ class TicksterScraper(VenueScraper):
         skip = 0
 
         while True:
-            url = f"{BASE_URL}/se/sv/events/at/{tickster_slug}"
+            encoded_slug = quote(tickster_slug, safe="-")
+            url = f"{BASE_URL}/se/sv/events/at/{encoded_slug}"
             if skip:
                 url += f"?skip={skip}&take={EVENTS_PER_PAGE}&sort=eventstart"
 
