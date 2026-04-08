@@ -99,6 +99,14 @@ CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
 CREATE INDEX IF NOT EXISTS idx_events_artist ON events(artist);
 CREATE INDEX IF NOT EXISTS idx_events_venue ON events(venue_id);
 CREATE INDEX IF NOT EXISTS idx_events_source ON events(source, external_id);
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_reminders_pending ON reminders(sent, remind_at);
 CREATE INDEX IF NOT EXISTS idx_event_changes_event ON event_changes(event_id);
 CREATE INDEX IF NOT EXISTS idx_event_matches_canonical ON event_matches(canonical_event_id);

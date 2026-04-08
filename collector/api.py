@@ -78,16 +78,36 @@ def _run_full_collect():
 
 
 def _schedule_collect():
-    """Kör insamling i bakgrunden med fast intervall."""
+    """Kör insamling och biljettsbevakning i bakgrunden."""
     def loop():
         import time
+        tick_counter = 0
+        PUSH_INTERVAL = max(1, 900 // COLLECT_INTERVAL) if COLLECT_INTERVAL > 0 else 1  # ~15 min
         while True:
             time.sleep(COLLECT_INTERVAL)
+            tick_counter += 1
             print(f"[Cron] Startar schemalagd insamling...")
             try:
                 _run_full_collect()
             except Exception as e:
-                print(f"[Cron] Fel: {e}")
+                print(f"[Cron] Insamling fel: {e}")
+            # Biljettsläpp-bevakning var 2:a körning
+            if tick_counter % 2 == 0:
+                try:
+                    from .ticket_watcher import check_ticket_updates
+                    n = check_ticket_updates()
+                    if n:
+                        print(f"[Tickets] {n} events uppdaterade")
+                except Exception as e:
+                    print(f"[Tickets] Fel: {e}")
+            # Push-notiser var PUSH_INTERVAL körning
+            try:
+                from .push import check_and_send_reminders
+                n = check_and_send_reminders()
+                if n:
+                    print(f"[Push] {n} notiser skickade")
+            except Exception as e:
+                print(f"[Push] Fel: {e}")
     t = threading.Thread(target=loop, daemon=True)
     t.start()
     print(f"  Schemalagd insamling var {COLLECT_INTERVAL // 3600}h")
@@ -143,6 +163,8 @@ class APIHandler(BaseHTTPRequestHandler):
             "/api/list/remove": self.handle_list_remove,
             "/api/artists/follow": self.handle_artist_follow,
             "/api/admin/match-verify": self.handle_match_verify,
+            "/api/push/subscribe": self.handle_push_subscribe,
+            "/api/push/unsubscribe": self.handle_push_unsubscribe,
         }
 
         handler = post_routes.get(path)
@@ -361,6 +383,27 @@ class APIHandler(BaseHTTPRequestHandler):
             "by_city": [dict(r) for r in by_city],
             "top_venues": [dict(r) for r in by_venue],
         })
+
+    def handle_push_subscribe(self, body):
+        endpoint = body.get("endpoint")
+        keys = body.get("keys", {})
+        p256dh = keys.get("p256dh")
+        auth = keys.get("auth")
+        if not all([endpoint, p256dh, auth]):
+            self.send_json({"error": "endpoint och keys.p256dh/auth krävs"}, 400)
+            return
+        from .push import subscribe
+        ok = subscribe(endpoint, p256dh, auth)
+        self.send_json({"ok": ok})
+
+    def handle_push_unsubscribe(self, body):
+        endpoint = body.get("endpoint")
+        if not endpoint:
+            self.send_json({"error": "endpoint krävs"}, 400)
+            return
+        from .push import unsubscribe
+        unsubscribe(endpoint)
+        self.send_json({"ok": True})
 
     def handle_match_candidates(self, params):
         """Returnerar ej verifierade matchkandidater för manuell granskning."""

@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
+import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Spelningskollen — Stockholm & Uppsala",
@@ -57,6 +58,7 @@ export default function RootLayout({
         </main>
 
         <BottomNav />
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );
