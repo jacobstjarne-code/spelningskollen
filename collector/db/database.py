@@ -175,6 +175,7 @@ def get_connection():
 _MIGRATIONS = [
     "ALTER TABLE events ADD COLUMN canonical_id INTEGER REFERENCES events(id)",
     "ALTER TABLE events ADD COLUMN status TEXT DEFAULT 'active'",
+    "ALTER TABLE events ADD COLUMN local_image_path TEXT",
     "CREATE INDEX IF NOT EXISTS idx_events_canonical ON events(canonical_id)",
 ]
 

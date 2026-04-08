@@ -9,6 +9,7 @@ export interface Event {
   genre: string | null;
   subgenre: string | null;
   image_url: string | null;
+  local_image_path: string | null;
   ticket_url: string | null;
   ticket_status: string;
   price_min: number | null;

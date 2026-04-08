@@ -48,6 +48,15 @@ def _run_full_collect():
         except Exception as e:
             print(f"[Collect] {label}: FEL — {e}")
 
+    # Ladda ner bilder för nya events
+    try:
+        from .images import process_pending_images
+        downloaded = process_pending_images(limit=50)
+        if downloaded:
+            print(f"[Bilder] {downloaded} nya bilder nedladdade")
+    except Exception as e:
+        print(f"[Bilder] FEL — {e}")
+
     # Kör matchning på alla events som samlats in senaste timmen
     try:
         conn = get_connection()

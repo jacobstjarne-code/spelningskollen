@@ -85,11 +85,21 @@ CREATE TABLE IF NOT EXISTS genre_map (
     normalized TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS event_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES events(id),
+    field TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Index för vanliga queries
 CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
 CREATE INDEX IF NOT EXISTS idx_events_artist ON events(artist);
 CREATE INDEX IF NOT EXISTS idx_events_venue ON events(venue_id);
 CREATE INDEX IF NOT EXISTS idx_events_source ON events(source, external_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_pending ON reminders(sent, remind_at);
+CREATE INDEX IF NOT EXISTS idx_event_changes_event ON event_changes(event_id);
 CREATE INDEX IF NOT EXISTS idx_event_matches_canonical ON event_matches(canonical_event_id);
 CREATE INDEX IF NOT EXISTS idx_event_matches_matched ON event_matches(matched_event_id);
