@@ -29,10 +29,9 @@ class VenueScraper(ABC):
         try:
             resp = self.session.get(url, timeout=15)
             resp.raise_for_status()
-            try:
-                return BeautifulSoup(resp.text, "lxml")
-            except Exception:
-                return BeautifulSoup(resp.text, "html.parser")
+            # Ge BeautifulSoup råa bytes — den detekterar charset från <meta> taggar
+            # istf att förlita sig på HTTP Content-Type-headern som ofta är fel.
+            return BeautifulSoup(resp.content, "html.parser")
         except requests.RequestException as e:
             print(f"  Fel vid hämtning av {url}: {e}")
             return None

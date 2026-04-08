@@ -31,10 +31,12 @@ from collector.sources.scraper_katalin import KatalinScraper
 from collector.sources.scraper_parksnackan import ParksnackanScraper
 from collector.sources.scraper_luger import LugerScraper
 from collector.sources.scraper_kaliber import KaliberScraper
+from collector.sources.scraper_nalen import NalenScraper
+from collector.sources.scraper_sodrateatern import SodraTeaternScraper
 
 
 ALL_SCRAPERS = [
-    TicksterScraper,              # Nalen, Södra Teatern, Fållan, Orionteatern, Flustret, Berns, m.fl.
+    TicksterScraper,              # Nalen, Berns, Debaser, Fållan, Orionteatern, Flustret, m.fl.
     FaschingScraper,              # Fasching (WordPress REST API)
     MunchenbryggerietScraper,     # Münchenbryggeriet
     StockholmLiveScraper,         # Avicii Arena, Annexet, Strawberry Arena
@@ -43,6 +45,8 @@ ALL_SCRAPERS = [
     ParksnackanScraper,
     LugerScraper,
     KaliberScraper,
+    NalenScraper,                 # nalen.com direkt (kompletterar Tickster)
+    SodraTeaternScraper,          # sodrateatern.com — musik-show-filter
 ]
 
 
