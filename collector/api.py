@@ -111,6 +111,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "/api/list": self.handle_list,
             "/api/stats": self.handle_stats,
             "/api/collect": self.handle_collect,
+            "/api/admin/match-candidates": self.handle_match_candidates,
         }
 
         handler = api_routes.get(path)
@@ -132,6 +133,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "/api/list/update": self.handle_list_update,
             "/api/list/remove": self.handle_list_remove,
             "/api/artists/follow": self.handle_artist_follow,
+            "/api/admin/match-verify": self.handle_match_verify,
         }
 
         handler = post_routes.get(path)
@@ -350,6 +352,86 @@ class APIHandler(BaseHTTPRequestHandler):
             "by_city": [dict(r) for r in by_city],
             "top_venues": [dict(r) for r in by_venue],
         })
+
+    def handle_match_candidates(self, params):
+        """Returnerar ej verifierade matchkandidater för manuell granskning."""
+        key = params.get("key", [None])[0]
+        expected = os.environ.get("COLLECT_KEY", "")
+        if expected and key != expected:
+            self.send_json({"error": "Unauthorized"}, 401)
+            return
+        conn = get_connection()
+        rows = conn.execute("""
+            SELECT em.id as match_id, em.confidence, em.match_method,
+                   ce.id as canonical_id, ce.artist as canonical_artist,
+                   ce.date as canonical_date, ce.source as canonical_source,
+                   cv.name as canonical_venue,
+                   me.id as candidate_id, me.artist as candidate_artist,
+                   me.date as candidate_date, me.source as candidate_source,
+                   mv.name as candidate_venue
+            FROM event_matches em
+            JOIN events ce ON em.canonical_event_id = ce.id
+            LEFT JOIN venues cv ON ce.venue_id = cv.id
+            JOIN events me ON em.matched_event_id = me.id
+            LEFT JOIN venues mv ON me.venue_id = mv.id
+            WHERE em.verified = 0
+            ORDER BY em.confidence DESC
+            LIMIT 100
+        """).fetchall()
+        conn.close()
+        result = []
+        for r in rows:
+            r = dict(r)
+            result.append({
+                "match_id": r["match_id"],
+                "confidence": r["confidence"],
+                "match_method": r["match_method"],
+                "canonical": {
+                    "id": r["canonical_id"],
+                    "artist": r["canonical_artist"],
+                    "date": r["canonical_date"],
+                    "venue": r["canonical_venue"],
+                    "source": r["canonical_source"],
+                },
+                "candidate": {
+                    "id": r["candidate_id"],
+                    "artist": r["candidate_artist"],
+                    "date": r["candidate_date"],
+                    "venue": r["candidate_venue"],
+                    "source": r["candidate_source"],
+                },
+            })
+        self.send_json(result)
+
+    def handle_match_verify(self, body):
+        """Verifiera eller avvisa en matchkandid."""
+        match_id = body.get("match_id")
+        action = body.get("action")  # 'merge' eller 'reject'
+        key = body.get("key", "")
+        expected = os.environ.get("COLLECT_KEY", "")
+        if expected and key != expected:
+            self.send_json({"error": "Unauthorized"}, 401)
+            return
+        if not match_id or action not in ("merge", "reject"):
+            self.send_json({"error": "match_id och action (merge/reject) krävs"}, 400)
+            return
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT canonical_event_id, matched_event_id FROM event_matches WHERE id = ?",
+            (match_id,)
+        ).fetchone()
+        conn.close()
+        if not row:
+            self.send_json({"error": "Match ej hittad"}, 404)
+            return
+        if action == "merge":
+            from .matching import merge_events
+            merge_events(row["canonical_event_id"], row["matched_event_id"])
+        conn = get_connection()
+        conn.execute("UPDATE event_matches SET verified = 1 WHERE id = ?", (match_id,))
+        conn.commit()
+        conn.close()
+        self.send_json({"ok": True, "action": action})
 
     def send_json(self, data, status=200):
         body = json.dumps(data, ensure_ascii=False, default=str).encode()
