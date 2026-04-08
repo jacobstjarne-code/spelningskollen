@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Spelningar", icon: "🎵" },
   { href: "/lista", label: "Min lista", icon: "♡" },
   { href: "/paningar", label: "Påningar", icon: "🔔" },
+  { href: "/profil", label: "Profil", icon: "⭐" },
 ];
 
 export default function BottomNav() {

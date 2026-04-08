@@ -53,6 +53,8 @@ export default function Home() {
   const [venue, setVenue] = useState("");
   const [search, setSearch] = useState("");
 
+  const [personalized, setPersonalized] = useState(false);
+
   const loadEvents = useCallback(async () => {
     setLoading(true);
     try {
@@ -61,6 +63,7 @@ export default function Home() {
       if (city) params.city = city;
       if (venue) params.venue = venue;
       if (search) params.search = search;
+      if (personalized) params.personalized = "true";
       const data = await getEvents(params);
       setEvents(data);
     } catch {
@@ -68,7 +71,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [tab, city, venue, search]);
+  }, [tab, city, venue, search, personalized]);
 
   useEffect(() => {
     getVenues().then(setVenues).catch(() => {});
@@ -121,15 +124,34 @@ export default function Home() {
         ))}
       </div>
 
-      <Filters
-        venues={venues}
-        city={city}
-        venue={venue}
-        search={search}
-        onCityChange={setCity}
-        onVenueChange={setVenue}
-        onSearchChange={setSearch}
-      />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <Filters
+          venues={venues}
+          city={city}
+          venue={venue}
+          search={search}
+          onCityChange={setCity}
+          onVenueChange={setVenue}
+          onSearchChange={setSearch}
+        />
+        <button
+          onClick={() => setPersonalized((p) => !p)}
+          style={{
+            flexShrink: 0,
+            padding: "6px 12px",
+            fontSize: 11,
+            fontWeight: personalized ? 700 : 400,
+            borderRadius: 20,
+            border: "none",
+            cursor: "pointer",
+            background: personalized ? "var(--accent)" : "var(--card-bg)",
+            color: personalized ? "#fff" : "var(--text-secondary)",
+            transition: "all 0.15s",
+          }}
+        >
+          ⭐ För mig
+        </button>
+      </div>
 
       {/* Event-count */}
       <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 12px" }}>
@@ -155,7 +177,7 @@ export default function Home() {
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {dateEvents.map((ev, i) => (
                   <div key={ev.id} className={`animate-in stagger-${Math.min(i + 1, 5)}`}>
-                    <EventCard event={ev} />
+                    <EventCard event={ev} onDismiss={(id) => setEvents((prev) => prev.filter((e) => e.id !== id))} />
                   </div>
                 ))}
               </div>

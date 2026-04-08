@@ -131,3 +131,62 @@ CREATE INDEX IF NOT EXISTS idx_reminders_pending ON reminders(sent, remind_at);
 CREATE INDEX IF NOT EXISTS idx_event_changes_event ON event_changes(event_id);
 CREATE INDEX IF NOT EXISTS idx_event_matches_canonical ON event_matches(canonical_event_id);
 CREATE INDEX IF NOT EXISTS idx_event_matches_matched ON event_matches(matched_event_id);
+
+-- ── Personalisering ────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS user_profile (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1 UNIQUE,
+    onboarding_done BOOLEAN DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_genre_preferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    genre TEXT NOT NULL,
+    weight REAL NOT NULL DEFAULT 0.5,
+    UNIQUE(user_id, genre)
+);
+
+CREATE TABLE IF NOT EXISTS user_venue_preferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    venue_id INTEGER NOT NULL REFERENCES venues(id),
+    weight REAL NOT NULL DEFAULT 0.5,
+    UNIQUE(user_id, venue_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_interactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    event_id INTEGER NOT NULL REFERENCES events(id),
+    interaction_type TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS artist_enrichment (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    artist_name TEXT NOT NULL UNIQUE,
+    spotify_id TEXT,
+    genres TEXT,
+    popularity INTEGER,
+    related_artists TEXT,
+    image_url TEXT,
+    source TEXT DEFAULT 'spotify',
+    enriched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS event_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES events(id),
+    user_id INTEGER NOT NULL DEFAULT 1,
+    score REAL NOT NULL DEFAULT 0.0,
+    computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_scores_user ON event_scores(user_id, score DESC);
+CREATE INDEX IF NOT EXISTS idx_user_interactions_user ON user_interactions(user_id, event_id);
+CREATE INDEX IF NOT EXISTS idx_artist_enrichment_name ON artist_enrichment(artist_name);

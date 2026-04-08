@@ -133,6 +133,18 @@ def _run_full_collect():
     except Exception as e:
         print(f"[Artists] FEL — {e}")
 
+    # Enrichment: Spotify + Claude genre-klassificering
+    try:
+        from .enrichment.pipeline import enrich_pending_artists, backfill_event_genres
+        enriched = enrich_pending_artists(max_artists=50)
+        if enriched:
+            print(f"[Enrichment] {enriched} artister berikade")
+        filled = backfill_event_genres()
+        if filled:
+            print(f"[Enrichment] {filled} events fick genre från enrichment")
+    except Exception as e:
+        print(f"[Enrichment] FEL — {e}")
+
     print(f"[Collect] Klart: {total} events totalt")
     return total
 
@@ -210,6 +222,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "/api/admin/match-candidates": self.handle_match_candidates,
             "/api/admin/collect-log": self.handle_collect_log,
             "/api/list/share": self.handle_list_share_get,
+            "/api/profile": self.handle_profile_get,
         }
 
         handler = api_routes.get(path)
@@ -235,6 +248,10 @@ class APIHandler(BaseHTTPRequestHandler):
             "/api/list/share/generate": self.handle_list_share_generate,
             "/api/push/subscribe": self.handle_push_subscribe,
             "/api/push/unsubscribe": self.handle_push_unsubscribe,
+            "/api/profile/onboarding": self.handle_onboarding,
+            "/api/profile/genres": self.handle_profile_genres,
+            "/api/profile/venues": self.handle_profile_venues,
+            "/api/interactions": self.handle_interaction,
         }
 
         handler = post_routes.get(path)
@@ -287,13 +304,19 @@ class APIHandler(BaseHTTPRequestHandler):
 
     def handle_events(self, params):
         conn = get_connection()
-        query = """
+        personalized = params.get("personalized", [""])[0] == "true"
+
+        score_join = "LEFT JOIN event_scores es_p ON es_p.event_id = e.id AND es_p.user_id = 1" if personalized else ""
+        score_select = ", COALESCE(es_p.score, 0) as score" if personalized else ", NULL as score"
+        order = "ORDER BY COALESCE(es_p.score, 0) DESC, e.date" if personalized else "ORDER BY e.date, e.time"
+
+        query = f"""
             SELECT e.id, e.artist, e.title, e.date, e.time, e.genre, e.subgenre,
                    e.image_url, e.ticket_url, e.ticket_status, e.price_min, e.price_max,
                    e.on_sale_date, e.source,
                    v.name as venue_name, v.city, v.slug as venue_slug, v.venue_type,
                    ul.status as list_status, ul.id as list_id,
-                   pc.price_prev
+                   pc.price_prev {score_select}
             FROM events e
             LEFT JOIN venues v ON e.venue_id = v.id
             LEFT JOIN user_lists ul ON ul.event_id = e.id
@@ -304,6 +327,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 GROUP BY event_id
                 HAVING changed_at = MAX(changed_at)
             ) pc ON pc.event_id = e.id
+            {score_join}
             WHERE e.date >= date('now')
               AND e.canonical_id IS NULL
         """
@@ -335,11 +359,11 @@ class APIHandler(BaseHTTPRequestHandler):
             query += " AND e.date <= ?"
             query_params.append(params["to"][0])
 
-        query += " ORDER BY e.date, e.time LIMIT 200"
+        query += f" {order} LIMIT 200"
 
         rows = conn.execute(query, query_params).fetchall()
         conn.close()
-        self.send_json([dict(r) for r in rows], cache_seconds=300)
+        self.send_json([dict(r) for r in rows], cache_seconds=0 if personalized else 300)
 
     def handle_venues(self, params):
         conn = get_connection()
@@ -623,6 +647,89 @@ class APIHandler(BaseHTTPRequestHandler):
         conn.commit()
         conn.close()
         self.send_json({"ok": True, "action": action})
+
+    def handle_profile_get(self, params):
+        """GET /api/profile — returnerar profil-snapshot."""
+        from .profile_engine import get_profile
+        self.send_json(get_profile(1))
+
+    def handle_onboarding(self, body):
+        """POST /api/profile/onboarding — spara onboarding-val, starta score-beräkning."""
+        from .profile_engine import save_onboarding
+        genres = body.get("genres", [])
+        venues = body.get("venues", [])
+        artists = body.get("artists", [])
+        if not isinstance(genres, list) or not isinstance(venues, list):
+            self.send_json({"error": "genres och venues måste vara listor"}, 400)
+            return
+        save_onboarding(1, genres, venues, artists)
+        # Starta score-beräkning i bakgrunden
+        import threading
+        from .recommender import compute_scores_for_user
+        threading.Thread(target=compute_scores_for_user, args=(1,), daemon=True).start()
+        self.send_json({"ok": True})
+
+    def handle_profile_genres(self, body):
+        """PUT /api/profile/genres — uppdatera genrevikter."""
+        from .db.database import get_connection
+        genres = body.get("genres", {})
+        if not isinstance(genres, dict):
+            self.send_json({"error": "genres måste vara ett objekt {genre: weight}"}, 400)
+            return
+        conn = get_connection()
+        for genre, weight in genres.items():
+            try:
+                w = float(weight)
+                w = max(0.0, min(1.0, w))
+                conn.execute(
+                    """INSERT OR REPLACE INTO user_genre_preferences (user_id, genre, weight)
+                       VALUES (1, ?, ?)""",
+                    (genre, w),
+                )
+            except (ValueError, TypeError):
+                pass
+        conn.commit()
+        conn.close()
+        self.send_json({"ok": True})
+
+    def handle_profile_venues(self, body):
+        """PUT /api/profile/venues — uppdatera venue-preferenser via slug."""
+        from .db.database import get_connection
+        venues = body.get("venues", {})
+        if not isinstance(venues, dict):
+            self.send_json({"error": "venues måste vara {slug: weight}"}, 400)
+            return
+        conn = get_connection()
+        for slug, weight in venues.items():
+            try:
+                row = conn.execute("SELECT id FROM venues WHERE slug = ?", (slug,)).fetchone()
+                if row:
+                    w = max(0.0, min(1.0, float(weight)))
+                    conn.execute(
+                        """INSERT OR REPLACE INTO user_venue_preferences (user_id, venue_id, weight)
+                           VALUES (1, ?, ?)""",
+                        (row["id"], w),
+                    )
+            except (ValueError, TypeError):
+                pass
+        conn.commit()
+        conn.close()
+        self.send_json({"ok": True})
+
+    def handle_interaction(self, body):
+        """POST /api/interactions — spara interaktion och uppdatera vikter."""
+        from .profile_engine import record_interaction
+        event_id = body.get("event_id")
+        interaction_type = body.get("type")
+        VALID_TYPES = {"click", "save", "buy", "unsave", "dismiss"}
+        if not event_id or interaction_type not in VALID_TYPES:
+            self.send_json({"error": "event_id och type (click/save/buy/unsave/dismiss) krävs"}, 400)
+            return
+        try:
+            record_interaction(1, int(event_id), interaction_type)
+            self.send_json({"ok": True})
+        except Exception as e:
+            self.send_json({"error": str(e)}, 500)
 
     def send_json(self, data, status=200, cache_seconds=0):
         body = json.dumps(data, ensure_ascii=False, default=str).encode()

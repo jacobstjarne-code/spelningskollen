@@ -1,6 +1,6 @@
 "use client";
 
-import { Event, formatDate, formatPrice, addToList, updateListItem, followArtist } from "@/lib/api";
+import { Event, formatDate, formatPrice, addToList, updateListItem, followArtist, recordInteraction } from "@/lib/api";
 import { useState } from "react";
 
 const VENUE_BAR_CLASS: Record<string, string> = {
@@ -30,12 +30,23 @@ const SAVE_BUTTONS = [
   { value: "bought_ticket", label: "🎫", activeLabel: "🎫", title: "Har biljett" },
 ];
 
-export default function EventCard({ event }: { event: Event }) {
+export default function EventCard({ event, onDismiss }: { event: Event; onDismiss?: (id: number) => void }) {
   const [status, setStatus] = useState<string | null>(event.list_status);
   const [listId, setListId] = useState<number | null>(event.list_id);
   const [saving, setSaving] = useState(false);
   const [following, setFollowing] = useState(false);
   const [followed, setFollowed] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  const handleDismiss = async () => {
+    setDismissed(true);
+    recordInteraction(event.id, "dismiss").catch(() => {});
+    onDismiss?.(event.id);
+  };
+
+  const handleCardClick = () => {
+    recordInteraction(event.id, "click").catch(() => {});
+  };
 
   const handleFollow = async () => {
     if (following || followed) return;
@@ -79,8 +90,10 @@ export default function EventCard({ event }: { event: Event }) {
   const barClass = VENUE_BAR_CLASS[event.venue_type || ""] || "venue-bar-club";
   const pillClass = STATUS_PILL[event.ticket_status] || "";
 
+  if (dismissed) return null;
+
   return (
-    <div className="card" style={{ display: "flex", gap: 10, padding: "10px 12px" }}>
+    <div className="card" style={{ display: "flex", gap: 10, padding: "10px 12px", position: "relative" }} onClick={handleCardClick}>
       {/* Venue-typ bar */}
       <div className={`venue-bar ${barClass}`} />
 
@@ -123,6 +136,18 @@ export default function EventCard({ event }: { event: Event }) {
           {price && (
             <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{price}</span>
           )}
+          {event.score != null && event.score > 0.6 && (
+            <span style={{
+              fontSize: 9,
+              fontWeight: 700,
+              color: "#fff",
+              background: "var(--accent)",
+              padding: "1px 5px",
+              borderRadius: 3,
+            }}>
+              {Math.round(event.score * 100)}% match
+            </span>
+          )}
           {event.price_prev != null && event.price_min != null && event.price_prev !== event.price_min && (
             <span style={{
               fontSize: 9,
@@ -147,7 +172,7 @@ export default function EventCard({ event }: { event: Event }) {
             return (
               <button
                 key={btn.value}
-                onClick={() => handleSave(btn.value)}
+                onClick={(e) => { e.stopPropagation(); handleSave(btn.value); }}
                 disabled={saving}
                 title={btn.title}
                 style={{
@@ -167,6 +192,24 @@ export default function EventCard({ event }: { event: Event }) {
             );
           })}
         </div>
+
+        {/* Inte intresserad */}
+        <button
+          onClick={(e) => { e.stopPropagation(); handleDismiss(); }}
+          title="Inte intresserad"
+          style={{
+            background: "none",
+            color: "var(--text-muted)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-xs)",
+            padding: "4px 7px",
+            fontSize: 11,
+            cursor: "pointer",
+            lineHeight: 1,
+          }}
+        >
+          ✕
+        </button>
 
         {/* Följ artist */}
         <button

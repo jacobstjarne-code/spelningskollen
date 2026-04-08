@@ -23,6 +23,14 @@ export interface Event {
   venue_type: string | null;
   list_status: string | null;
   list_id: number | null;
+  score: number | null;
+}
+
+export interface UserProfile {
+  onboarding_done: boolean;
+  genres: { genre: string; weight: number }[];
+  venues: { name: string; slug: string; city: string; weight: number }[];
+  followed_artists: string[];
 }
 
 export interface Venue {
@@ -99,6 +107,38 @@ export async function followArtist(artistName: string) {
 
 export async function generateShareLink(): Promise<{ share_url: string }> {
   return fetchJSON("/api/list/share/generate", { method: "POST" });
+}
+
+export async function getProfile(): Promise<UserProfile> {
+  return fetchJSON("/api/profile");
+}
+
+export async function saveOnboarding(genres: string[], venues: string[], artists: string[]) {
+  return fetchJSON("/api/profile/onboarding", {
+    method: "POST",
+    body: JSON.stringify({ genres, venues, artists }),
+  });
+}
+
+export async function updateGenres(genres: Record<string, number>) {
+  return fetchJSON("/api/profile/genres", {
+    method: "POST",
+    body: JSON.stringify({ genres }),
+  });
+}
+
+export async function updateVenues(venues: Record<string, number>) {
+  return fetchJSON("/api/profile/venues", {
+    method: "POST",
+    body: JSON.stringify({ venues }),
+  });
+}
+
+export async function recordInteraction(eventId: number, type: "click" | "save" | "buy" | "unsave" | "dismiss") {
+  return fetchJSON("/api/interactions", {
+    method: "POST",
+    body: JSON.stringify({ event_id: eventId, type }),
+  });
 }
 
 // Formatering
