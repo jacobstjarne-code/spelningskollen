@@ -21,6 +21,17 @@ interface MatchCandidate {
   candidate: MatchEvent;
 }
 
+interface CollectLogEntry {
+  source: string;
+  run_count: number;
+  last_run: string;
+  total_events: number;
+  last_count: number;
+  error_count: number;
+  last_error: string | null;
+  avg_duration_ms: number;
+}
+
 export default function AdminPage() {
   return (
     <Suspense fallback={<div style={{ padding: "40px", color: "var(--text-secondary)" }}>Laddar...</div>}>
@@ -34,21 +45,26 @@ function AdminContent() {
   const key = searchParams.get("key") || "";
 
   const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
+  const [collectLog, setCollectLog] = useState<CollectLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [tab, setTab] = useState<"dedup" | "log">("dedup");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/match-candidates?key=${key}`);
-      if (res.status === 401) {
+      const [dedupRes, logRes] = await Promise.all([
+        fetch(`${API_BASE}/api/admin/match-candidates?key=${key}`),
+        fetch(`${API_BASE}/api/admin/collect-log?key=${key}`),
+      ]);
+      if (dedupRes.status === 401) {
         setMessage("Ej behörig — ange ?key=xxx i URL:en");
         return;
       }
-      const data = await res.json();
-      setCandidates(data);
+      setCandidates(await dedupRes.json());
+      if (logRes.ok) setCollectLog(await logRes.json());
     } catch {
-      setMessage("Kunde inte ladda kandidater");
+      setMessage("Kunde inte ladda data");
     } finally {
       setLoading(false);
     }
@@ -81,21 +97,87 @@ function AdminContent() {
 
   return (
     <div style={{ padding: "16px", maxWidth: "800px", margin: "0 auto" }}>
-      <h1 style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>
-        Dedup-granskning
+      <h1 style={{ fontSize: "18px", fontWeight: 700, marginBottom: "12px" }}>
+        Admin
       </h1>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+        {([["dedup", "Dedup-granskning"], ["log", "Insamlingslogg"]] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            style={{
+              padding: "6px 14px",
+              fontSize: 12,
+              fontWeight: tab === id ? 700 : 400,
+              borderRadius: 20,
+              border: "none",
+              cursor: "pointer",
+              background: tab === id ? "var(--accent)" : "var(--card-bg)",
+              color: tab === id ? "#fff" : "var(--text-secondary)",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {loading && (
         <p style={{ color: "var(--text-secondary)", fontSize: "14px" }}>Laddar...</p>
       )}
 
-      {!loading && candidates.length === 0 && (
+      {!loading && tab === "log" && (
+        <div>
+          {collectLog.length === 0 ? (
+            <p style={{ color: "var(--text-secondary)", fontSize: "14px" }}>Ingen logg ännu.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {collectLog.map((entry) => (
+                <div key={entry.source} className="card-sharp" style={{ padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{entry.source}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
+                        Senast: {new Date(entry.last_run).toLocaleString("sv-SE")}
+                        {" · "}
+                        {entry.run_count} körningar
+                        {" · "}
+                        ~{Math.round(entry.avg_duration_ms / 1000)}s snitt
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>
+                        {entry.last_count}
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>events</div>
+                    </div>
+                  </div>
+                  {entry.error_count > 0 && (
+                    <div style={{
+                      marginTop: 8,
+                      padding: "6px 8px",
+                      background: "rgba(239,68,68,0.08)",
+                      borderRadius: 4,
+                      fontSize: 11,
+                      color: "#ef4444",
+                    }}>
+                      {entry.error_count} fel · {entry.last_error}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!loading && tab === "dedup" && candidates.length === 0 && (
         <p style={{ color: "var(--text-secondary)", fontSize: "14px" }}>
           Inga kandidater att granska.
         </p>
       )}
 
-      {candidates.map((c) => (
+      {tab === "dedup" && candidates.map((c) => (
         <div
           key={c.match_id}
           className="card-sharp"

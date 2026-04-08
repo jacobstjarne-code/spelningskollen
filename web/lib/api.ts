@@ -96,6 +96,10 @@ export async function followArtist(artistName: string) {
   });
 }
 
+export async function generateShareLink(): Promise<{ share_url: string }> {
+  return fetchJSON("/api/list/share/generate", { method: "POST" });
+}
+
 // Formatering
 export function formatDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");

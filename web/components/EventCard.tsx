@@ -1,6 +1,6 @@
 "use client";
 
-import { Event, formatDate, formatPrice, addToList, updateListItem } from "@/lib/api";
+import { Event, formatDate, formatPrice, addToList, updateListItem, followArtist } from "@/lib/api";
 import { useState } from "react";
 
 const VENUE_BAR_CLASS: Record<string, string> = {
@@ -34,6 +34,21 @@ export default function EventCard({ event }: { event: Event }) {
   const [status, setStatus] = useState<string | null>(event.list_status);
   const [listId, setListId] = useState<number | null>(event.list_id);
   const [saving, setSaving] = useState(false);
+  const [following, setFollowing] = useState(false);
+  const [followed, setFollowed] = useState(false);
+
+  const handleFollow = async () => {
+    if (following || followed) return;
+    setFollowing(true);
+    try {
+      await followArtist(event.artist);
+      setFollowed(true);
+    } catch {
+      // tyst
+    } finally {
+      setFollowing(false);
+    }
+  };
 
   const handleSave = async (newStatus: string) => {
     if (saving) return;
@@ -140,6 +155,26 @@ export default function EventCard({ event }: { event: Event }) {
             );
           })}
         </div>
+
+        {/* Följ artist */}
+        <button
+          onClick={handleFollow}
+          disabled={following || followed}
+          title={followed ? "Bevakar " + event.artist : "Bevaka " + event.artist}
+          style={{
+            background: followed ? "rgba(52,211,153,0.1)" : "rgba(255,255,255,0.03)",
+            color: followed ? "var(--accent-bright)" : "var(--text-muted)",
+            border: followed ? "1px solid rgba(52,211,153,0.3)" : "1px solid var(--border)",
+            borderRadius: "var(--radius-xs)",
+            padding: "4px 7px",
+            fontSize: 11,
+            cursor: followed ? "default" : "pointer",
+            transition: "all 150ms",
+            lineHeight: 1,
+          }}
+        >
+          {followed ? "🔔" : "🔕"}
+        </button>
 
         {/* Biljettlänk */}
         {event.ticket_url && event.ticket_status !== "sold_out" && (

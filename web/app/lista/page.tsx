@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ListItem, getMyList, updateListItem, removeFromList, formatDate } from "@/lib/api";
+import { ListItem, getMyList, updateListItem, removeFromList, formatDate, generateShareLink } from "@/lib/api";
 
 const STATUS_OPTIONS = [
   { value: "interested", label: "Intresserad", icon: "♡" },
@@ -20,6 +20,9 @@ export default function ListaPage() {
   const [items, setItems] = useState<ListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const loadList = async () => {
     try {
@@ -44,6 +47,27 @@ export default function ListaPage() {
     loadList();
   };
 
+  const handleShare = async () => {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      const result = await generateShareLink();
+      setShareUrl(result.share_url);
+    } catch {
+      // tyst
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!shareUrl) return;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   const filtered = filter === "all" ? items : items.filter((i) => i.status === filter);
   const ticketCount = items.filter((i) => i.status === "bought_ticket").length;
   const goingCount = items.filter((i) => i.status === "going").length;
@@ -55,11 +79,62 @@ export default function ListaPage() {
         <h1 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
           Sparade spelningar
         </h1>
-        <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11 }}>
-          <span style={{ color: "var(--accent-bright)" }}>🎫 {ticketCount} biljetter</span>
-          <span style={{ color: "var(--text-secondary)" }}>✓ {goingCount} ska gå</span>
-          <span style={{ color: "var(--text-muted)" }}>♡ {items.length} totalt</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 6 }}>
+          <div style={{ display: "flex", gap: 12, fontSize: 11 }}>
+            <span style={{ color: "var(--accent-bright)" }}>🎫 {ticketCount} biljetter</span>
+            <span style={{ color: "var(--text-secondary)" }}>✓ {goingCount} ska gå</span>
+            <span style={{ color: "var(--text-muted)" }}>♡ {items.length} totalt</span>
+          </div>
+          {items.length > 0 && (
+            <button
+              onClick={handleShare}
+              disabled={sharing}
+              style={{
+                background: "none",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-xs)",
+                padding: "4px 10px",
+                fontSize: 10,
+                color: "var(--text-secondary)",
+                cursor: "pointer",
+              }}
+            >
+              {sharing ? "..." : "Dela lista"}
+            </button>
+          )}
         </div>
+
+        {shareUrl && (
+          <div style={{
+            marginTop: 10,
+            padding: "10px 12px",
+            background: "var(--bg-elevated)",
+            borderRadius: "var(--radius-sm)",
+            border: "1px solid var(--border)",
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+          }}>
+            <span style={{ flex: 1, fontSize: 10, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {shareUrl}
+            </span>
+            <button
+              onClick={handleCopy}
+              style={{
+                background: copied ? "rgba(52,211,153,0.15)" : "var(--card-bg)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-xs)",
+                padding: "4px 10px",
+                fontSize: 10,
+                color: copied ? "var(--accent-bright)" : "var(--text-primary)",
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              {copied ? "Kopierat!" : "Kopiera"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Filterflikar */}
